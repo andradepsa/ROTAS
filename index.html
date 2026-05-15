@@ -6,6 +6,8 @@
     <title>Calculadora Multi-Paradas para Entregas — v35</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f0f4f8; padding: 20px; }
@@ -3454,141 +3456,189 @@ function buildItineraryTable(points, legs, totalDist, totalDur, custoKm, totalTo
 }
 
 function downloadItinerary() {
-    var pts          = _itinData.points;
-    var legs         = _itinData.legs;
-    var failedStops  = _itinData.failedStops || [];
-    var m            = _itinData.meta;
-    if (!pts || pts.length === 0) return;
+    var pts         = _itinData.points;
+    var legs        = _itinData.legs;
+    var failedStops = _itinData.failedStops || [];
+    var m           = _itinData.meta;
+    if (!pts || pts.length === 0) { alert('Calcule uma rota primeiro.'); return; }
 
-    var now = new Date();
-    var dateStr = now.toLocaleDateString('pt-BR');
-    var timeStr = now.toLocaleTimeString('pt-BR', {hour:'2-digit',minute:'2-digit'});
+    if (typeof window.jspdf === 'undefined') {
+        alert('Biblioteca jsPDF ainda não carregou. Aguarde um instante e tente novamente.');
+        return;
+    }
+
+    var now      = new Date();
+    var dateStr  = now.toLocaleDateString('pt-BR');
+    var timeStr  = now.toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'});
     var doCircuito = m.doCircuito;
     var stopCount  = pts.length - (doCircuito ? 1 : 0);
 
-    /* ── Constrói HTML do PDF em uma janela oculta e usa window.print() ── */
-    var rows = '';
+    var { jsPDF } = window.jspdf;
+    var doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+
+    // ── Paleta ──
+    var DARK   = [30,  47,  78];   // #1e2f4e
+    var BLUE   = [44, 125, 160];   // #2c7da0
+    var GREEN  = [21, 128,  61];   // #15803d
+    var RED    = [220,  38,  38];  // #dc2626
+    var LIGHT  = [240, 244, 248];  // #f0f4f8
+    var WHITE  = [255, 255, 255];
+    var GRAY   = [100, 116, 139];  // #64748b
+
+    var pw = doc.internal.pageSize.getWidth();
+
+    // ── Cabeçalho ──
+    doc.setFillColor.apply(doc, DARK);
+    doc.rect(0, 0, pw, 22, 'F');
+    doc.setTextColor.apply(doc, WHITE);
+    doc.setFontSize(14); doc.setFont('helvetica','bold');
+    doc.text('Itinerario de Entregas', 10, 10);
+    doc.setFontSize(8); doc.setFont('helvetica','normal');
+    doc.text('Gerado em ' + dateStr + ' as ' + timeStr + '   |   ' + (stopCount - 1) + ' paradas', 10, 16);
+
+    // ── Cards de totais ──
+    var cards = [
+        { label: 'Distancia Total',  val: m.totalDist.toFixed(1) + ' km',                        bg: [224,242,254] },
+        { label: 'Tempo Estimado',   val: formatTime(m.totalDur),                                 bg: [224,242,254] },
+        { label: 'Combustivel',      val: 'R$ ' + m.custoKm.toFixed(2).replace('.',','),          bg: [220,252,231] },
+        { label: 'Pedagios x' + m.axleMult, val: 'R$ ' + m.totalTollCost.toFixed(2).replace('.',','), bg: [220,252,231] },
+        { label: 'Custo Total',      val: 'R$ ' + m.custoTotal.toFixed(2).replace('.',','),       bg: [209,250,229] }
+    ];
+    var cardW = (pw - 20) / cards.length;
+    var cy = 26;
+    for (var ci = 0; ci < cards.length; ci++) {
+        var cx = 10 + ci * cardW;
+        doc.setFillColor.apply(doc, cards[ci].bg);
+        doc.roundedRect(cx, cy, cardW - 2, 14, 2, 2, 'F');
+        doc.setTextColor(30,47,78); doc.setFontSize(11); doc.setFont('helvetica','bold');
+        doc.text(cards[ci].val, cx + (cardW-2)/2, cy + 7, {align:'center'});
+        doc.setTextColor.apply(doc, GRAY); doc.setFontSize(6.5); doc.setFont('helvetica','normal');
+        doc.text(cards[ci].label, cx + (cardW-2)/2, cy + 12, {align:'center'});
+    }
+
+    // ── Tabela ──
+    var LEG_COLORS_RGB = [
+        [230,57,70],[42,157,143],[233,196,106],[38,70,83],[244,162,97],
+        [106,76,147],[25,130,196],[255,89,94],[138,201,38],[255,146,76]
+    ];
+
+    var head = [['#','Parada','Endereco Reconhecido','CEP','Logradouro','No','Bairro','Municipio','UF','Distancia','Tempo','Pedagios']];
+    var body = [];
+
     for (var i = 0; i < stopCount; i++) {
         var p = pts[i];
         var isOrigin = (i === 0);
-        var badgeColor = isOrigin ? '#1e2f4e' : (ITIN_COLORS[(i-1) % ITIN_COLORS.length]);
-        var badgeLabel = isOrigin ? '📍' : String(i);
-
         var fCep='', fRua='', fNum='', fBairro='', fMun='', fEst='';
         var fullP = normalizeFullAddressFormat(p.input || '');
         if (fullP) {
             fCep=fullP.cep; fRua=fullP.logradouro; fNum=fullP.numero;
             fBairro=fullP.bairro||''; fMun=fullP.municipio; fEst=fullP.estado;
         } else {
-            var cepP3 = parseCepInput(p.input || '');
-            if (cepP3) { fCep=cepP3.cepFmt||''; fNum=cepP3.numero||''; }
-            var cuP3 = extractCityUF(p.display || '');
-            if (cuP3) { fMun=cuP3.cidade; fEst=cuP3.uf; }
+            var cepP4 = parseCepInput(p.input || '');
+            if (cepP4) { fCep=cepP4.cepFmt||''; fNum=cepP4.numero||''; }
+            var cuP4 = extractCityUF(p.display || '');
+            if (cuP4) { fMun=cuP4.cidade; fEst=cuP4.uf; }
         }
         fBairro = p.bairro || fBairro;
 
-        var hasLeg     = (i < legs.length);
-        var legDist    = hasLeg ? legs[i].distanceKm + ' km'       : '—';
-        var legTime    = hasLeg ? formatTime(legs[i].durationMin)  : '—';
-        var legTolls   = hasLeg ? legs[i].tolls.length + ' praça(s)' + (legs[i].tollCost>0?' — R$ '+legs[i].tollCost.toFixed(2).replace('.',','):'') : '—';
-        var rowBg      = isOrigin ? '#eef2ff' : (i%2===0?'#ffffff':'#f8fafc');
-        var destLabel  = isOrigin ? 'Origem' : 'Parada #'+i;
+        var hasLeg    = (i < legs.length);
+        var legDist   = hasLeg ? legs[i].distanceKm + ' km' : '-';
+        var legTime   = hasLeg ? formatTime(legs[i].durationMin) : '-';
+        var legTollTx = !hasLeg ? '-'
+            : legs[i].tolls.length === 0 ? 'Sem pedagios'
+            : legs[i].tolls.length + ' praca(s)' + (legs[i].tollCost > 0 ? '\nR$ ' + legs[i].tollCost.toFixed(2).replace('.',',') : '');
 
-        var volumesHtml = '';
-        if (p.volumes && p.volumes.length > 1) {
-            volumesHtml = '<br><span style="font-size:10px;color:#92400e;">📦 '+p.volumes.map(function(v,vi){ return (vi+1)+'. '+escHtml(v.input); }).join(' · ')+'</span>';
-        }
+        var destLabel = isOrigin ? 'Origem' : 'Parada #' + i;
+        var addrDisplay = (p.display || p.input || '').substring(0, 60);
+        if (p.volumes && p.volumes.length > 1) addrDisplay += '\n[' + p.volumes.length + ' volumes]';
 
-        rows += '<tr style="background:'+rowBg+';border-bottom:1px solid #e2e8f0;">'
-            + '<td style="padding:8px 10px;text-align:center;"><span style="display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:50%;background:'+badgeColor+';color:white;font-weight:700;font-size:12px;">'+badgeLabel+'</span></td>'
-            + '<td style="padding:8px 10px;font-weight:700;white-space:nowrap;color:#1e2f4e;">'+destLabel+'</td>'
-            + '<td style="padding:8px 10px;font-size:11px;color:#334155;max-width:220px;">'+escHtml(p.display||p.input||'')+volumesHtml+'</td>'
-            + '<td style="padding:8px 10px;font-size:11px;color:#475569;white-space:nowrap;">'+escHtml(fCep)+'</td>'
-            + '<td style="padding:8px 10px;font-size:11px;color:#475569;">'+escHtml(fRua)+'</td>'
-            + '<td style="padding:8px 10px;font-size:11px;color:#475569;white-space:nowrap;">'+escHtml(fNum)+'</td>'
-            + '<td style="padding:8px 10px;font-size:11px;color:#475569;">'+escHtml(fBairro)+'</td>'
-            + '<td style="padding:8px 10px;font-size:11px;color:#475569;">'+escHtml(fMun)+'</td>'
-            + '<td style="padding:8px 10px;font-size:11px;color:#475569;white-space:nowrap;">'+escHtml(fEst)+'</td>'
-            + '<td style="padding:8px 10px;font-size:11px;font-weight:700;white-space:nowrap;">'+legDist+'</td>'
-            + '<td style="padding:8px 10px;font-size:11px;white-space:nowrap;">'+legTime+'</td>'
-            + '<td style="padding:8px 10px;font-size:11px;color:#92400e;">'+legTolls+'</td>'
-            + '</tr>';
+        body.push([
+            isOrigin ? '📍' : String(i),
+            destLabel,
+            addrDisplay,
+            fCep, fRua, fNum, fBairro, fMun, fEst,
+            legDist, legTime, legTollTx
+        ]);
     }
 
-    // Endereços não encontrados no PDF
-    if (failedStops.length > 0) {
-        rows += '<tr style="background:#fef2f2;"><td colspan="12" style="padding:7px 10px;font-weight:700;color:#991b1b;font-size:10px;">⚠️ '+failedStops.length+' endereço(s) não encontrado(s) — excluídos do cálculo:</td></tr>';
-        for (var pfi = 0; pfi < failedStops.length; pfi++) {
-            var pfs = failedStops[pfi];
-            rows += '<tr style="background:#fef2f2;border-bottom:1px solid #fca5a5;">'
-                + '<td style="padding:7px 10px;text-align:center;"><span style="display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:#dc2626;color:white;font-weight:700;font-size:10px;">✕</span></td>'
-                + '<td style="padding:7px 10px;font-weight:700;color:#991b1b;font-size:11px;white-space:nowrap;">Parada #'+(pfs.num||'?')+'</td>'
-                + '<td colspan="7" style="padding:7px 10px;font-size:10px;color:#991b1b;">'+escHtml(pfs.addr||'')+'<br><em style="color:#b91c1c;">'+escHtml(pfs.err||'CEP/endereço não encontrado')+'</em></td>'
-                + '<td colspan="3" style="padding:7px 10px;color:#dc2626;font-size:10px;font-weight:700;">❌ Não roteado</td>'
-                + '</tr>';
-        }
+    // Linhas de falha
+    for (var fi2 = 0; fi2 < failedStops.length; fi2++) {
+        var fs = failedStops[fi2];
+        body.push([
+            '✕',
+            'Parada #' + (fs.num || '?'),
+            (fs.addr || '') + '\n[' + (fs.err || 'nao encontrado') + ']',
+            '','','','','','',
+            'NAO ROTEADO','',''
+        ]);
     }
 
-    var pdfHtml = '<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8">'
-        + '<title>Itinerário de Entregas — '+dateStr+'</title>'
-        + '<style>'
-        + 'body{font-family:Arial,Helvetica,sans-serif;margin:0;padding:0;color:#1e293b;background:#fff;}'
-        + '.page{padding:24px 28px;max-width:1100px;margin:0 auto;}'
-        + 'h1{font-size:18px;color:#1e2f4e;margin:0 0 4px;}'
-        + '.subtitle{font-size:11px;color:#64748b;margin-bottom:16px;}'
-        + '.kpi-row{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:18px;}'
-        + '.kpi{background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;padding:8px 14px;min-width:120px;}'
-        + '.kpi .v{font-size:16px;font-weight:800;color:#0369a1;display:block;}'
-        + '.kpi .l{font-size:10px;color:#64748b;}'
-        + '.kpi.g{background:#f0fdf4;border-color:#86efac;}'
-        + '.kpi.g .v{color:#15803d;}'
-        + 'table{width:100%;border-collapse:collapse;font-size:11px;}'
-        + 'thead tr{background:#1e2f4e;}'
-        + 'thead th{color:#fff;padding:8px 10px;text-align:left;font-size:10px;white-space:nowrap;}'
-        + 'tfoot tr{background:#1e2f4e;}'
-        + 'tfoot td{color:#fff;padding:8px 10px;font-size:10px;font-weight:700;}'
-        + '.footer{margin-top:16px;font-size:9px;color:#94a3b8;text-align:center;border-top:1px solid #e2e8f0;padding-top:8px;}'
-        + '@media print{'
-        + '  @page{size:A4 landscape;margin:12mm;}'
-        + '  body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}'
-        + '  .no-print{display:none!important;}'
-        + '}'
-        + '</style></head><body>'
-        + '<div class="page">'
-        + '<div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:12px;">'
-        +   '<div><h1>📦 Itinerário de Entregas</h1>'
-        +   '<div class="subtitle">Gerado em '+dateStr+' às '+timeStr+' &nbsp;·&nbsp; '+(stopCount-1)+' paradas</div></div>'
-        +   '<button class="no-print" onclick="window.print()" style="background:#1e2f4e;color:white;border:none;padding:10px 20px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">🖨️ Imprimir / Salvar PDF</button>'
-        + '</div>'
-        + '<div class="kpi-row">'
-        +   '<div class="kpi"><span class="v">'+m.totalDist.toFixed(1)+' km</span><span class="l">Distância Total</span></div>'
-        +   '<div class="kpi"><span class="v">'+formatTime(m.totalDur)+'</span><span class="l">Tempo Estimado</span></div>'
-        +   '<div class="kpi g"><span class="v">R$ '+m.custoKm.toFixed(2).replace('.',',')+'</span><span class="l">Combustível</span></div>'
-        +   '<div class="kpi g"><span class="v">R$ '+m.totalTollCost.toFixed(2).replace('.',',')+'</span><span class="l">Pedágios ×'+m.axleMult+' eixos</span></div>'
-        +   '<div class="kpi" style="background:#f0fdf4;border-color:#86efac;"><span class="v" style="color:#15803d;">R$ '+m.custoTotal.toFixed(2).replace('.',',')+'</span><span class="l">💰 Custo Total</span></div>'
-        + '</div>'
-        + '<table>'
-        + '<thead><tr>'
-        +   '<th>#</th><th>Parada</th><th>Endereço Reconhecido</th>'
-        +   '<th>CEP</th><th>Logradouro</th><th>Nº</th><th>Bairro</th><th>Município</th><th>UF</th>'
-        +   '<th>Distância</th><th>Tempo</th><th>Pedágios</th>'
-        + '</tr></thead>'
-        + '<tbody>'+rows+'</tbody>'
-        + '<tfoot><tr>'
-        +   '<td colspan="9" style="text-align:right;">TOTAIS →</td>'
-        +   '<td>'+m.totalDist.toFixed(1)+' km</td>'
-        +   '<td>'+formatTime(m.totalDur)+'</td>'
-        +   '<td>R$ '+m.totalTollCost.toFixed(2).replace('.',',')+'</td>'
-        + '</tr></tfoot>'
-        + '</table>'
-        + '<div class="footer">Gerado pela Calculadora Multi-Paradas para Entregas · OSRM · Nominatim/OSM · OpenStreetMap</div>'
-        + '</div></body></html>';
+    doc.autoTable({
+        startY: cy + 18,
+        head: head,
+        body: body,
+        theme: 'grid',
+        styles: { fontSize: 7.5, cellPadding: 2, overflow: 'linebreak', valign: 'middle' },
+        headStyles: { fillColor: DARK, textColor: WHITE, fontStyle: 'bold', fontSize: 7.5 },
+        columnStyles: {
+            0:  { cellWidth: 8,  halign: 'center' },
+            1:  { cellWidth: 22, fontStyle: 'bold' },
+            2:  { cellWidth: 48 },
+            3:  { cellWidth: 20 },
+            4:  { cellWidth: 30 },
+            5:  { cellWidth: 10 },
+            6:  { cellWidth: 22 },
+            7:  { cellWidth: 26 },
+            8:  { cellWidth: 8,  halign: 'center' },
+            9:  { cellWidth: 18, halign: 'center', fontStyle: 'bold' },
+            10: { cellWidth: 14, halign: 'center' },
+            11: { cellWidth: 22 }
+        },
+        didParseCell: function(data) {
+            if (data.section === 'body') {
+                var rowIdx = data.row.index;
+                // Origem
+                if (rowIdx === 0) {
+                    data.cell.styles.fillColor = [238, 242, 255];
+                    data.cell.styles.textColor = DARK;
+                }
+                // Falhas (últimas linhas)
+                else if (rowIdx >= stopCount) {
+                    data.cell.styles.fillColor = [254, 242, 242];
+                    data.cell.styles.textColor = RED;
+                }
+                // Paradas alternadas
+                else if (rowIdx % 2 === 0) {
+                    data.cell.styles.fillColor = [248, 250, 252];
+                }
+                // Badge colorido na col 0 para paradas normais
+                if (data.column.index === 0 && rowIdx > 0 && rowIdx < stopCount) {
+                    var rgb = LEG_COLORS_RGB[(rowIdx - 1) % LEG_COLORS_RGB.length];
+                    data.cell.styles.textColor = rgb;
+                    data.cell.styles.fontStyle = 'bold';
+                }
+            }
+        },
+        foot: [[
+            '', 'TOTAIS', '', '', '', '', '', '', '',
+            m.totalDist.toFixed(1) + ' km',
+            formatTime(m.totalDur),
+            'R$ ' + m.totalTollCost.toFixed(2).replace('.',',')
+        ]],
+        footStyles: { fillColor: DARK, textColor: WHITE, fontStyle: 'bold', fontSize: 7.5 },
+        margin: { left: 10, right: 10 }
+    });
 
-    var win = window.open('', '_blank', 'width=1200,height=800');
-    if (!win) { alert('Popup bloqueado! Permita popups para este site e tente novamente.'); return; }
-    win.document.write(pdfHtml);
-    win.document.close();
-    win.focus();
+    // Rodapé de página
+    var pageCount = doc.internal.getNumberOfPages();
+    for (var pg = 1; pg <= pageCount; pg++) {
+        doc.setPage(pg);
+        doc.setFontSize(6.5); doc.setTextColor.apply(doc, GRAY);
+        doc.text('Calculadora Multi-Paradas · OSRM · Nominatim/OSM · pag ' + pg + '/' + pageCount,
+            pw / 2, doc.internal.pageSize.getHeight() - 4, { align: 'center' });
+    }
+
+    doc.save('itinerario-' + now.toISOString().slice(0,10) + '.pdf');
 }
 </script>
 </body>
