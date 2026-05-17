@@ -164,7 +164,7 @@
 <div class="container">
     <div class="header">
         <h1>📦 Calculadora Multi-Paradas para Entregas</h1>
-            <p>CEP+número OU endereço completo — quantas paradas quiser &nbsp;·&nbsp; <strong style="color:#7dd3fc;">v37 — ViaCEP → BrasilAPI → OpenCEP → Nominatim · Overpass fallback · Rua do usuário NUNCA substituída · TSP NN+2-opt</strong></p>
+            <p>CEP+número OU endereço completo — quantas paradas quiser &nbsp;·&nbsp; <strong style="color:#7dd3fc;">v38 — Fix: CEP,Rua,Bairro,Cidade,UF (sem nº) agora usa pipeline CEP · ViaCEP → BrasilAPI → OpenCEP → Nominatim · Overpass fallback · TSP NN+2-opt</strong></p>
     </div>
     <div class="content">
         <div class="sidebar">
@@ -429,9 +429,11 @@ function clearBeforePaste() {
 // preservando o CEP como prefixo para o modo smartGeocode
 // ============================================
 function normalizeFullAddressFormat(line) {
-    // ★ v31: aceita 4 campos (Rua, Nº, Cidade, UF) OU 5 campos (Rua, Nº, Bairro, Cidade, UF)
-    // Ex 4: "08143-110, Rua José Augusto Lobo, 66, São Paulo, SP, Brasil"
-    // Ex 5: "13015-100, Rua Barreto Leme, 10, Centro, Campinas, SP, Brasil"
+    // ★ v38: aceita 4 campos OU 5 campos, COM ou SEM número.
+    // Detecta se parts[1] é número (inicia com dígito) ou bairro (texto).
+    // Ex com nº 4: "08143-110, Rua José Augusto Lobo, 66, São Paulo, SP, Brasil"
+    // Ex com nº 5: "13015-100, Rua Barreto Leme, 10, Centro, Campinas, SP, Brasil"
+    // Ex sem nº 4: "07012-020, Rua Voluntários da Pátria, Vila Augusta, Guarulhos, SP, Brasil"
     var m = line.match(/^(\d{5}-?\d{3})\s*,\s*(.+?,\s*.+?,\s*.+?,\s*[A-Z]{2})(?:\s*,\s*Brasil)?\s*$/i);
     if (!m) return null;
 
@@ -442,35 +444,58 @@ function normalizeFullAddressFormat(line) {
     if (parts.length < 4) return null;
 
     var logradouro, numero, bairro, municipio, estado;
+    // ★ v38: parts[1] começa com dígito → é número; senão → é bairro
+    var secondIsNum = /^\d/.test(parts[1].trim());
 
     if (parts.length >= 5) {
-        // ★ v31: formato com bairro — [rua, numero, bairro, cidade, UF]
         logradouro = parts[0].trim();
-        numero     = parts[1].trim();
-        bairro     = parts[2].trim();
-        municipio  = parts[3].trim();
-        estado     = parts[4].trim().toUpperCase();
+        if (secondIsNum) {
+            // [rua, numero, bairro, cidade, UF]
+            numero     = parts[1].trim();
+            bairro     = parts[2].trim();
+            municipio  = parts[3].trim();
+            estado     = parts[4].trim().toUpperCase();
+        } else {
+            // [rua, bairro, ..., cidade, UF] — sem número
+            numero     = '';
+            bairro     = parts[1].trim();
+            municipio  = parts[parts.length - 2].trim();
+            estado     = parts[parts.length - 1].trim().toUpperCase();
+        }
     } else {
-        // formato original — [rua, numero, cidade, UF]
+        // 4 campos
         logradouro = parts[0].trim();
-        numero     = parts[1].trim();
-        bairro     = '';
+        if (secondIsNum) {
+            // [rua, numero, cidade, UF]
+            numero     = parts[1].trim();
+            bairro     = '';
+        } else {
+            // ★ v38 FIX: [rua, bairro, cidade, UF] — SEM número
+            numero     = '';
+            bairro     = parts[1].trim();
+        }
         municipio  = parts[2].trim();
         estado     = parts[3].trim().toUpperCase();
     }
 
+    // ★ v38: cleaned INCLUI o CEP — smartGeocode re-detecta o formato completo
+    // e roteia pelo pipeline CEP robusto. O CEP é removido internamente por _smartGeocodeImpl.
+    var cleanedParts = [logradouro];
+    if (numero) cleanedParts.push(numero);
+    if (bairro) cleanedParts.push(bairro);
+    cleanedParts.push(municipio, estado, 'Brasil');
+
+    var displayParts = [logradouro];
+    if (numero) displayParts.push(numero);
+    if (bairro) displayParts.push(bairro);
+
     return {
-        // ★ v34: cleaned é o endereço SEM CEP (Nominatim não entende CEP brasileiro na query)
-        cleaned:    logradouro + ', ' + numero
-                    + (bairro ? ', ' + bairro : '')
-                    + ', ' + municipio + ', ' + estado + ', Brasil',
-        display:    logradouro + ', ' + numero
-                    + (bairro ? ', ' + bairro : '')
-                    + ', ' + municipio + ' - ' + estado + ', Brasil (CEP ' + cepFmt + ')',
+        cleaned:    cepFmt + ', ' + cleanedParts.join(', '),
+        display:    displayParts.join(', ') + ', ' + municipio + ' - ' + estado + ', Brasil (CEP ' + cepFmt + ')',
         cep:        cepFmt,
         numero:     numero,
         logradouro: logradouro,
-        bairro:     bairro,    // ★ v31: capturado quando presente no input
+        bairro:     bairro,
         municipio:  municipio,
         estado:     estado,
         isFullFormat: true
@@ -1727,10 +1752,15 @@ async function _smartGeocodeImpl(input, refLat, refLon, refLabel, statusDiv) {
     // AGORA: detecta aqui e passa pelo caminho CEP seguro (ViaCEP + Overpass dentro da cidade certa).
     var fullFmtCheck = normalizeFullAddressFormat(input.trim());
     if (fullFmtCheck) {
-        rLog('ok', '★ v26: Formato completo detectado em smartGeocode → convertendo para CEP+número');
+        // ★ v38 FIX: converte para "CEP, numero" (ou só "CEP" se sem número) para que
+        // parseCepInput dispare o pipeline robusto de CEP (ViaCEP → Overpass → Nominatim blindado).
+        // ANTES: cleaned removia o CEP → parseCepInput retornava null → caía em geocodeAsAddress
+        // genérico → centróide da cidade quando Nominatim não encontrava a rua.
+        var _cepInput = fullFmtCheck.cep + (fullFmtCheck.numero ? ', ' + fullFmtCheck.numero : '');
+        rLog('ok', '★ v38: Formato completo detectado → CEP pipeline');
         rLog('val', '   "' + input.trim() + '"');
-        rLog('val', '   → "' + fullFmtCheck.cleaned + '" (CEP: ' + fullFmtCheck.cep + ' | nº: ' + fullFmtCheck.numero + ' | cidade: ' + fullFmtCheck.municipio + ')');
-        input = fullFmtCheck.cleaned;
+        rLog('val', '   → "' + _cepInput + '" (CEP: ' + fullFmtCheck.cep + ' | nº: ' + (fullFmtCheck.numero || '(sem)') + ' | rua: ' + fullFmtCheck.logradouro + ' | bairro: ' + (fullFmtCheck.bairro || '(sem)') + ' | cidade: ' + fullFmtCheck.municipio + ')');
+        input = _cepInput;
     }
 
     var cep = parseCepInput(input);
