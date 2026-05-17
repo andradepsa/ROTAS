@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Calculadora Multi-Paradas para Entregas — v35</title>
+    <title>Calculadora Multi-Paradas para Entregas — v37</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -164,7 +164,7 @@
 <div class="container">
     <div class="header">
         <h1>📦 Calculadora Multi-Paradas para Entregas</h1>
-            <p>CEP+número OU endereço completo — quantas paradas quiser &nbsp;·&nbsp; <strong style="color:#7dd3fc;">v35 — Overpass fallback p/ endereços sem CEP · Apenas Nominatim · Rua do usuário NUNCA substituída · Trava anti-duplicata · TSP NN+2-opt</strong></p>
+            <p>CEP+número OU endereço completo — quantas paradas quiser &nbsp;·&nbsp; <strong style="color:#7dd3fc;">v37 — ViaCEP → BrasilAPI → OpenCEP → Nominatim · Overpass fallback · Rua do usuário NUNCA substituída · TSP NN+2-opt</strong></p>
     </div>
     <div class="content">
         <div class="sidebar">
@@ -990,6 +990,38 @@ function parseCepInput(input) {
 // async function lookupCEPOpenCEP(cep) — REMOVIDA
 
 // ============================================
+// ★ v37: ViaCEP — fonte primária de dados postais (reativada)
+// Gratuita, sem chave, funciona no browser, cobre todo o Brasil.
+// Retorna logradouro oficial dos Correios → geocodificação precisa.
+// ============================================
+async function lookupViaCEP(cep) {
+    var digits = cep.replace(/\D/g, '');
+    var url = 'https://viacep.com.br/ws/' + digits + '/json/';
+    rLog('dim', 'ViaCEP: ' + url);
+    try {
+        var resp = await fetchRetry(url, {}, 'ViaCEP', 2);
+        var data = await resp.json();
+        if (!data || data.erro) {
+            rLog('warn', 'ViaCEP: CEP ' + cep + ' não encontrado');
+            return null;
+        }
+        rLog('ok', 'ViaCEP OK:');
+        rLog('val', '  logradouro: "' + (data.logradouro||'') + '"');
+        rLog('val', '  bairro: "' + (data.bairro||'') + '"');
+        rLog('val', '  cidade: ' + (data.localidade||'') + ' | UF: ' + (data.uf||''));
+        return {
+            logradouro: data.logradouro || '',
+            bairro:     data.bairro     || '',
+            cidade:     data.localidade || '',
+            uf:         data.uf         || ''
+        };
+    } catch(e) {
+        rLog('warn', 'ViaCEP falhou: ' + e.message);
+        return null;
+    }
+}
+
+// ============================================
 // BRASILAPI — Fonte postal secundária (v22)
 // Cobre CEPs que o ViaCEP não conhece (base de dados diferente)
 // ============================================
@@ -1725,18 +1757,44 @@ async function _smartGeocodeImpl(input, refLat, refLon, refLabel, statusDiv) {
             rLog('val', '  bairro: "' + cepData.bairro + '"');
             rLog('val', '  cidade: ' + cepData.cidade + ' | UF: ' + cepData.uf);
         } else {
-            // CASO 2: Só CEP + número → Nominatim postalcode extrai cidade/UF
-            rLog('step', '★ v34: CEP sem endereço completo — extraindo cidade via Nominatim postalcode');
-            var postalInfo = await nominatimByPostalcode(cep.cep);
-            if (postalInfo && postalInfo.city) {
-                cepData = {
-                    logradouro: postalInfo.road || '',
-                    bairro: postalInfo.bairro || '',
-                    cidade: postalInfo.city,
-                    uf: postalInfo.uf || 'SP'
-                };
-                rLog('ok', '★ v34: cepData do Nominatim postalcode:');
+            // CASO 2: Só CEP + número → ★ v37: ViaCEP → BrasilAPI → OpenCEP → Nominatim postalcode
+            rLog('step', '★ v37: CEP sem endereço — consultando APIs postais (ViaCEP → BrasilAPI → OpenCEP → Nominatim)');
+
+            // 1º: ViaCEP (Correios — cobertura total do Brasil)
+            var postalApiData = await lookupViaCEP(cep.cep);
+
+            // 2º: BrasilAPI (base diferente, cobre CEPs industriais/especiais)
+            if (!postalApiData || !postalApiData.cidade) {
+                rLog('warn', 'ViaCEP sem resultado — tentando BrasilAPI');
+                postalApiData = await lookupCEPBrasilAPI(cep.cep);
+            }
+
+            // 3º: OpenCEP
+            if (!postalApiData || !postalApiData.cidade) {
+                rLog('warn', 'BrasilAPI sem resultado — tentando OpenCEP');
+                postalApiData = await lookupCEPOpenCEP(cep.cep);
+            }
+
+            if (postalApiData && postalApiData.cidade) {
+                cepData = postalApiData;
+                rLog('ok', '★ v37: cepData das APIs postais:');
+                rLog('val', '  logradouro: "' + cepData.logradouro + '"');
+                rLog('val', '  bairro: "' + cepData.bairro + '"');
                 rLog('val', '  cidade: ' + cepData.cidade + ' | UF: ' + cepData.uf);
+            } else {
+                // 4º: Nominatim postalcode (último recurso — cobertura parcial OSM)
+                rLog('warn', 'APIs postais falharam — fallback Nominatim postalcode');
+                var postalInfo = await nominatimByPostalcode(cep.cep);
+                if (postalInfo && postalInfo.city) {
+                    cepData = {
+                        logradouro: postalInfo.road || '',
+                        bairro:     postalInfo.bairro || '',
+                        cidade:     postalInfo.city,
+                        uf:         postalInfo.uf || 'SP'
+                    };
+                    rLog('ok', '★ v37: cepData do Nominatim postalcode:');
+                    rLog('val', '  cidade: ' + cepData.cidade + ' | UF: ' + cepData.uf);
+                }
             }
         }
 
