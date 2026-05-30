@@ -264,7 +264,39 @@ const db={
 const MODEL='gemini-2.5-flash';
 const BASE='https://generativelanguage.googleapis.com/v1beta';
 
-async function gemStream(key,sys,user,onChunk,signal,temp=0.1,maxTok=8192){
+/* Delay com suporte a abort */
+function sleep(ms,signal){
+  return new Promise((res,rej)=>{
+    if(signal?.aborted){rej(new DOMException('Aborted','AbortError'));return;}
+    const t=setTimeout(()=>res(),ms);
+    signal?.addEventListener('abort',()=>{clearTimeout(t);rej(new DOMException('Aborted','AbortError'));},{once:true});
+  });
+}
+
+/* Wrapper com retry automático para 429 (rate limit) */
+async function gemStreamWithRetry(key,sys,user,onChunk,signal,temp=0.1,maxTok=8192){
+  const delays=[3000,8000,20000,40000]; // backoff: 3s, 8s, 20s, 40s
+  for(let attempt=0;attempt<=delays.length;attempt++){
+    try{
+      await _gemStreamRaw(key,sys,user,onChunk,signal,temp,maxTok);
+      return;
+    }catch(e){
+      if(e.name==='AbortError')throw e;
+      const is429=e.message&&e.message.includes('429');
+      if(is429&&attempt<delays.length){
+        const wait=delays[attempt];
+        // notifica via onChunk especial que vai ser ignorado pelo caller (prefixo ##WAIT##)
+        onChunk(`##WAIT##${Math.round(wait/1000)}`);
+        await sleep(wait,signal);
+        onChunk('##RETRY##');
+        continue;
+      }
+      throw e;
+    }
+  }
+}
+
+async function _gemStreamRaw(key,sys,user,onChunk,signal,temp=0.1,maxTok=8192){
   const r=await fetch(`${BASE}/models/${MODEL}:streamGenerateContent?alt=sse&key=${key}`,{
     method:'POST',
     headers:{'Content-Type':'application/json'},
@@ -277,7 +309,7 @@ async function gemStream(key,sys,user,onChunk,signal,temp=0.1,maxTok=8192){
   });
   if(!r.ok){
     const e=await r.json().catch(()=>({}));
-    if(r.status===429)throw new Error('Rate limit (429). Aguarde alguns segundos e tente novamente.');
+    if(r.status===429)throw new Error('429: Rate limit atingido.');
     throw new Error(e?.error?.message||`HTTP ${r.status}`);
   }
   const rdr=r.body.getReader(),dec=new TextDecoder();
@@ -292,29 +324,34 @@ async function gemStream(key,sys,user,onChunk,signal,temp=0.1,maxTok=8192){
       if(!ln.startsWith('data: '))continue;
       const d=ln.slice(6).trim();
       if(!d||d==='[DONE]')continue;
-      try{
-        const j=JSON.parse(d);
-        const t=j?.candidates?.[0]?.content?.parts?.[0]?.text||'';
-        if(t)onChunk(t);
-      }catch{/* ignore malformed SSE chunk */}
+      try{const j=JSON.parse(d);const t=j?.candidates?.[0]?.content?.parts?.[0]?.text||'';if(t)onChunk(t);}
+      catch{/* malformed chunk ignorado */}
     }
   }
-  // flush remaining buffer
   if(buf.startsWith('data: ')){
     const d=buf.slice(6).trim();
-    if(d&&d!=='[DONE]'){
-      try{
-        const j=JSON.parse(d);
-        const t=j?.candidates?.[0]?.content?.parts?.[0]?.text||'';
-        if(t)onChunk(t);
-      }catch{}
-    }
+    if(d&&d!=='[DONE]'){try{const j=JSON.parse(d);const t=j?.candidates?.[0]?.content?.parts?.[0]?.text||'';if(t)onChunk(t);}catch{}}
   }
 }
 
-async function gemOnce(key,sys,user,signal,temp=0.2,maxTok=8192){
+/* gemStream público — filtra tokens de controle ##WAIT## ##RETRY## */
+async function gemStream(key,sys,user,onChunk,signal,temp=0.1,maxTok=8192,onStatus=null){
+  await gemStreamWithRetry(key,sys,user,chunk=>{
+    if(chunk.startsWith('##WAIT##')){
+      if(onStatus)onStatus(`⏳ Rate limit — aguardando ${chunk.slice(8)}s...`);
+      return;
+    }
+    if(chunk==='##RETRY##'){
+      if(onStatus)onStatus('↺ Tentando novamente...');
+      return;
+    }
+    onChunk(chunk);
+  },signal,temp,maxTok);
+}
+
+async function gemOnce(key,sys,user,signal,temp=0.2,maxTok=8192,onStatus=null){
   let out='';
-  await gemStream(key,sys,user,t=>{out+=t;},signal,temp,maxTok);
+  await gemStream(key,sys,user,t=>{out+=t;},signal,temp,maxTok,onStatus);
   return out;
 }
 
@@ -346,58 +383,81 @@ function fixTocAndStrip(rawHtml){
   return html;
 }
 
+/* ═══ CAPACIDADE EXATA DE PALAVRAS POR TIPO DE PÁGINA ═══
+   Página 6×9" com fonte EB Garamond 11.5pt, line-height 1.55
+   Área útil: 576px wide, 864px tall, padding 77px top/bottom, 58/72px sides
+   Medido empiricamente: ~380 palavras numa página normal
+   chapter-page: padding-top 140px → ~320 palavras úteis
+   Título ocupa ~60 palavras equivalentes (chapter-num + h1 + chapter-rule)
+   h2 de seção ocupa ~30 palavras equivalentes
+   h3 ocupa ~20 palavras equivalentes
+   blockquote: conta palavras * 1.3 (fonte menor mas margens)
+   epigraph: conta palavras * 1.2
+═══════════════════════════════════════════════════════ */
+const PAGE_CAP={
+  normal:380,       // palavras numa página sem cabeçalho de capítulo
+  chapter:320,      // palavras úteis numa chapter-page (após header ocupar espaço)
+  chapterHeader:60, // custo fixo do chapter-num+h1+chapter-rule em palavras
+  h2Cost:30,        // custo de um h2 de seção
+  h3Cost:20,        // custo de um h3
+  runheadCost:0,    // runhead é absolute, não ocupa fluxo
+};
+
+function countWords(text){
+  return text.trim().split(/\s+/).filter(Boolean).length;
+}
+
+/* Calcula quantas páginas um capítulo com X palavras vai ocupar */
+function calcChapterPages(palavras){
+  if(palavras<=PAGE_CAP.chapter)return 1;
+  const resto=palavras-PAGE_CAP.chapter;
+  return 1+Math.ceil(resto/PAGE_CAP.normal);
+}
+
 /* ═══ SYSTEM PROMPT DIAGRAMADOR ═══ */
 function buildSys(bookTitle,userStyle){
-  return `Você é um diagramador editorial profissional. Converta os blocos de texto em páginas HTML para um livro KDP 6×9".
+  return `Você é um diagramador editorial profissional. Sua tarefa é pegar texto bruto e convertê-lo em páginas HTML para livro KDP 6×9".
 
-PROIBIDO:
+═══ REGRAS ABSOLUTAS ═══
 - NUNCA use style= em nenhum elemento.
 - NUNCA altere, resuma ou omita qualquer palavra do texto original.
-- NUNCA emita markdown, comentários ou explicações — apenas HTML de <page>.
-- NUNCA crie classes fora desta especificação.
-- NUNCA feche uma <page class="chapter-page"> sem incluir pelo menos o primeiro parágrafo (dropcap) após o chapter-rule.
+- NUNCA emita markdown, comentários ou texto — apenas HTML de <page>.
+- NUNCA crie classes fora da especificação abaixo.
 
-ESTRUTURA DE PÁGINA NORMAL:
-<page>
-<span class="runhead">${bookTitle||'—'}</span>
-... conteúdo ...
-</page>
+═══ CAPACIDADE EXATA POR PÁGINA ═══
+• <page> normal: 380 palavras de texto corrido.
+• <page class="chapter-page">: o cabeçalho (chapter-num + h1 + chapter-rule) ocupa o equivalente a 60 palavras de espaço. Restam 320 palavras de texto.
+• h2 de seção dentro de uma página ocupa 30 palavras de espaço.
+• h3 ocupa 20 palavras de espaço.
+• ALGORITMO DE CONTAGEM: mantenha um contador wordsUsed. Ao abrir chapter-page: wordsUsed=60. Ao adicionar h2: wordsUsed+=30. Ao adicionar h3: wordsUsed+=20. Ao adicionar parágrafo: wordsUsed+=countWords(parágrafo). Capacidade da page atual = 320 se chapter-page, 380 se page normal. Se wordsUsed+novasPalavras > capacidade: FECHE a page atual e ABRA nova <page> com runhead, recomece wordsUsed=0.
 
-ESTRUTURA DE CAPÍTULO — OBRIGATÓRIO incluir parágrafos:
+═══ ESTRUTURA DE PÁGINA CAPÍTULO ═══
 <page class="chapter-page">
 <span class="chapter-num">CAPÍTULO N</span>
-<h1>Título</h1>
+<h1>Título do Capítulo</h1>
 <span class="chapter-rule"></span>
-<p class="dropcap">Primeiro parágrafo COMPLETO aqui. Nunca feche a page sem este parágrafo.</p>
+<p class="dropcap">Primeiro parágrafo COMPLETO. Nunca feche esta page sem ao menos este parágrafo.</p>
 <p>Segundo parágrafo...</p>
 </page>
 
-CAPACIDADE: page normal = 380 palavras. chapter-page = 320 palavras (padding maior).
+═══ ESTRUTURA DE PÁGINA NORMAL ═══
+<page>
+<span class="runhead">${bookTitle||'—'}</span>
+<p>Continua o texto...</p>
+</page>
 
-ALGORITMO:
-- [CAPÍTULO]: feche page atual, abra chapter-page, adicione chapter-num+h1+chapter-rule, wordsUsed=60, CONTINUE adicionando parágrafos dentro desta mesma page.
-- [SEÇÃO]: se wordsUsed+palavras+60>capacidade: nova page. Senão: adiciona.
-- [PARÁGRAFO]/[PRIMEIRO-PARÁGRAFO]/[CITAÇÃO]/[SEPARADOR]: se wordsUsed+palavras>capacidade: fecha page, abre nova page com runhead, adiciona. Senão: adiciona.
-
-CLASSES DE PARÁGRAFO:
-<p class="dropcap"> → APENAS o [PRIMEIRO-PARÁGRAFO] após chapter-rule. Um por capítulo.
+═══ CLASSES DISPONÍVEIS ═══
+<p class="dropcap"> → ÚNICO por capítulo, APENAS o primeiro parágrafo após chapter-rule.
 <p class="no-indent"> → primeiro § após h2, h3, blockquote, epigraph ou ornament.
-<p> → parágrafos normais de continuidade.
-<p class="ornament">✦  ✦  ✦</p> → separador de cena.
+<p> → parágrafos normais de continuidade (com recuo automático via CSS).
+<p class="center"> → parágrafo centralizado.
+<p class="ornament">✦  ✦  ✦</p> → separador de cena (ocupa ~10 palavras de espaço).
+<blockquote>texto<cite>— Fonte</cite></blockquote> → citação com bordinha laranja.
+<div class="epigraph">texto<cite>— Fonte</cite></div> → epígrafe no início de capítulo.
+<h2>Título de Seção</h2> → seção interna (30 palavras de espaço).
+<h3>Subtítulo</h3> → subseção (20 palavras de espaço).
 
-SEQUÊNCIA OBRIGATÓRIA EM chapter-page:
-1. <span class="chapter-num">CAPÍTULO N</span>
-2. <h1>Título</h1>
-3. <span class="chapter-rule"></span>
-4. [se houver] <div class="epigraph">...<cite>— Fonte</cite></div>
-5. <p class="dropcap">Primeiro parágrafo COMPLETO</p>  ← NUNCA omitir
-6. <p>demais parágrafos até ~320 palavras</p>
-7. </page>
-
-SUMÁRIO: use <page class="toc-page">, entradas com class="toc-entry toc-cap" ou "toc-entry toc-part", número de página como "?".
-TÍTULO: <page class="title-page">. DIREITOS: <page class="copyright-page">.
-
-${userStyle?`ESTILO ADICIONAL: ${userStyle}\n`:''}
+${userStyle?`═══ ESTILO ADICIONAL ═══\n${userStyle}\n`:''}
 RETORNE APENAS HTML de <page>...</page>. Zero texto fora das tags.`;
 }
 
@@ -470,119 +530,171 @@ async function exportDocx(blocks,config){
 
 /* ═══ ROBUST JSON PARSER ═══ */
 function parseJsonSafe(raw){
-  // Strip markdown fences
-  let s=raw.replace(/^```(?:json)?/,'').replace(/```\s*$/,'').trim();
-  // Try direct parse first
+  let s=raw.replace(/^```(?:json)?[\r\n]*/,'').replace(/[\r\n]*```\s*$/,'').trim();
   try{return JSON.parse(s);}catch(_){}
-  // Find first { ... } block (handles trailing garbage or preamble)
-  const start=s.indexOf('{');
-  const end=s.lastIndexOf('}');
-  if(start!==-1&&end!==-1&&end>start){
-    try{return JSON.parse(s.slice(start,end+1));}catch(_){}
-  }
-  // Last resort: attempt to close unclosed strings/braces
-  // Count open braces and try appending closing braces
+  const start=s.indexOf('{'),end=s.lastIndexOf('}');
+  if(start!==-1&&end>start){try{return JSON.parse(s.slice(start,end+1));}catch(_){}}
+  // Tenta fechar estrutura truncada
   let fixed=s.slice(start!==-1?start:0);
-  // Close any unterminated string: count unescaped quotes parity
-  let inStr=false,escaped=false,depth=0;
-  for(let i=0;i<fixed.length;i++){
-    const c=fixed[i];
-    if(escaped){escaped=false;continue;}
-    if(c==='\\'){escaped=true;continue;}
+  let inStr=false,esc=false,depth=0;
+  for(const c of fixed){
+    if(esc){esc=false;continue;}
+    if(c==='\\'){esc=true;continue;}
     if(c==='"'){inStr=!inStr;continue;}
     if(!inStr){if(c==='{')depth++;else if(c==='}')depth--;}
   }
   if(inStr)fixed+='"';
   while(depth-->0)fixed+='}';
-  try{return JSON.parse(fixed);}catch(e){
-    throw new Error('JSON inválido do modelo: '+e.message);
+  try{return JSON.parse(fixed);}catch(e){throw new Error('JSON inválido do modelo: '+e.message);}
+}
+
+/* ═══ CÁLCULO DE PALAVRAS POR CAPÍTULO ═══
+   Distribui palavras entre capítulos de forma que o total de páginas
+   bata com o alvo do usuário, respeitando a capacidade exata de cada tipo de página.
+═══════════════════════════════════════════════════════ */
+function calcWordsPerChapter(totalPaginas,numCapitulos){
+  // Páginas especiais: título(1) + sumário(1) + direitos(1) = 3
+  const paginasEspeciais=3;
+  const paginasConteudo=Math.max(totalPaginas-paginasEspeciais,numCapitulos);
+  // Cada capítulo começa em chapter-page (320 palavras úteis)
+  // Páginas seguintes têm 380 palavras cada
+  // Estimativa: média de páginas por capítulo
+  const paginasPorCap=paginasConteudo/numCapitulos;
+  // Palavras: primeira page = 320, demais = 380
+  let palavrasPorCap;
+  if(paginasPorCap<=1){
+    palavrasPorCap=Math.round(PAGE_CAP.chapter*paginasPorCap);
+  }else{
+    palavrasPorCap=PAGE_CAP.chapter+Math.round((paginasPorCap-1)*PAGE_CAP.normal);
   }
+  return Math.max(palavrasPorCap,300); // mínimo 300 palavras por capítulo
 }
 
 /* Gera o outline completo do livro em JSON */
-async function generateOutline(apiKey,form,signal){
-  const sys=`Você é um escritor editorial profissional especializado em livros de não-ficção e ficção para o mercado brasileiro.
-Sua tarefa é criar um outline detalhado para um livro completo.
-REGRAS CRÍTICAS:
-- Responda APENAS com JSON válido, sem markdown, sem blocos de código, sem explicações, sem texto antes ou depois do JSON.
-- NÃO use aspas duplas dentro de strings — use aspas simples ou reescreva a frase.
-- NÃO inclua quebras de linha dentro de valores de string — mantenha tudo em uma linha.
-- Mantenha "resumo" curto: no máximo 120 caracteres, sem pontuação especial.
-Formato exato:
-{
-  "titulo": "string",
-  "subtitulo": "string",
-  "autor": "string",
-  "descricao": "string (2-3 frases sobre o livro)",
-  "paginas_alvo": number,
-  "partes": [
-    {
-      "numero": 1,
-      "titulo": "string",
-      "capitulos": [
-        {
-          "numero": 1,
-          "titulo": "string",
-          "resumo": "string (max 120 chars, sem aspas duplas)",
-          "palavras_alvo": number
-        }
-      ]
-    }
-  ]
-}`;
+async function generateOutline(apiKey,form,signal,onStatus){
+  // Calcula palavras alvo por capítulo antes de chamar a IA
+  const totalPags=parseInt(form.paginas)||200;
+  const numCaps=parseInt(form.capitulos)||15;
+  const palavrasPorCap=calcWordsPerChapter(totalPags,numCaps);
+  const totalPalavras=palavrasPorCap*numCaps;
 
-  const user=`Crie um outline para um livro com as seguintes especificações:
-Título desejado: ${form.titulo}
-Tema/Assunto: ${form.tema}
-Público-alvo: ${form.publico}
+  const sys=`Você é um escritor editorial profissional especializado em livros para o mercado brasileiro.
+Crie um outline para um livro completo.
+REGRAS CRÍTICAS DE FORMATO:
+- Responda APENAS com JSON puro válido. Nenhum texto antes ou depois.
+- Nenhum bloco de código markdown (sem backticks).
+- Strings NÃO podem conter aspas duplas internas — use aspas simples ou reescreva.
+- Strings NÃO podem ter quebras de linha — tudo em linha única.
+- Campo "resumo": máximo 100 caracteres, sem pontuação especial.
+- Campo "palavras_alvo": use EXATAMENTE o valor fornecido no pedido, não invente.
+Formato JSON exato:
+{"titulo":"string","subtitulo":"string","autor":"string","descricao":"string","partes":[{"numero":1,"titulo":"string","capitulos":[{"numero":1,"titulo":"string","resumo":"string","palavras_alvo":number}]}]}`;
+
+  const user=`Crie outline para:
+Título: ${form.titulo}
+Tema: ${form.tema}
+Público: ${form.publico}
 Gênero: ${form.genero}
 Tom: ${form.tom}
-Número de páginas aproximado: ${form.paginas}
-Número de capítulos desejado: ${form.capitulos}
-Instruções adicionais: ${form.instrucoes||'nenhuma'}
+Páginas alvo: ${totalPags} (${totalPalavras} palavras no total)
+Capítulos: ${numCaps} distribuídos em partes temáticas
+Instruções extras: ${form.instrucoes||'nenhuma'}
 
-Distribua os capítulos em partes temáticas coerentes.
-Cada capítulo deve ter palavras_alvo calculado para que o total chegue a aproximadamente ${form.paginas} páginas (considere 380 palavras por página).
-Seja específico nos resumos — cada resumo deve guiar a escrita com conteúdo real, não genérico.`;
+IMPORTANTE: Cada capítulo deve ter "palavras_alvo" = ${palavrasPorCap} (EXATAMENTE este número).
+Seja específico nos resumos — guie a escrita com conteúdo real.`;
 
-  const raw=await gemOnce(apiKey,sys,user,signal,0.7,6144);
+  if(onStatus)onStatus('Gerando estrutura do livro...');
+  const raw=await gemOnce(apiKey,sys,user,signal,0.7,4096,onStatus);
   return parseJsonSafe(raw);
 }
 
-/* Gera o HTML diagramado de um capítulo completo */
-async function generateChapter(apiKey,outline,parte,cap,bookTitle,onChunk,signal){
-  const sys=buildSys(bookTitle,'');
+/* ═══ GERAÇÃO DE CAPÍTULO EM PARTES ═══
+   Um capítulo pode precisar de múltiplas chamadas à API se tiver muitas palavras.
+   Cada chamada gera no máximo CHUNK_WORDS palavras para evitar truncamento.
+═══════════════════════════════════════════════════════ */
+const CHUNK_WORDS=1200; // palavras máximas por chamada à API
 
+async function generateChapterInParts(apiKey,outline,parte,cap,bookTitle,onChunk,signal,onStatus){
+  const totalWords=cap.palavras_alvo||600;
+  const numParts=Math.ceil(totalWords/CHUNK_WORDS);
+  const sys=buildSys(bookTitle,'');
   const prevCaps=[];
-  for(const pt of outline.partes){
+  outer:for(const pt of outline.partes){
     for(const c of pt.capitulos){
-      if(c.numero===cap.numero&&pt.numero===parte.numero)break;
-      prevCaps.push(`Capítulo ${c.numero}: ${c.titulo}`);
+      if(c.numero===cap.numero&&pt.numero===parte.numero)break outer;
+      prevCaps.push(`Cap.${c.numero}: ${c.titulo}`);
     }
   }
+  const prevCapsStr=prevCaps.slice(-5).join(', ')||'nenhum';
 
-  const user=`Escreva e diagrame o capítulo abaixo como HTML de <page> pronto para KDP.
+  let partHtmlAccum=''; // HTML gerado nas partes anteriores deste capítulo
+  let wordsWritten=0;
+
+  for(let part=1;part<=numParts;part++){
+    if(signal?.aborted)return;
+    const wordsThisPart=Math.min(CHUNK_WORDS,totalWords-wordsWritten);
+    if(onStatus)onStatus(`Cap. ${cap.numero}/${totalWords>0?Math.ceil(totalWords/380):1}pgs — parte ${part}/${numParts} (${wordsThisPart} palavras)...`);
+
+    const isFirst=(part===1);
+    const isLast=(part===numParts);
+
+    let user;
+    if(isFirst){
+      user=`Escreva e diagrame A PRIMEIRA PARTE do capítulo abaixo como HTML de <page>.
 
 LIVRO: "${bookTitle}"
-GÊNERO: ${outline.genero||''}
 TOM: ${outline.tom||''}
-PARTE: ${parte.numero} — ${parte.titulo}
-CAPÍTULO: ${cap.numero} — ${cap.titulo}
-RESUMO DO CAPÍTULO: ${cap.resumo}
-PALAVRAS-ALVO: ${cap.palavras_alvo} palavras de corpo de texto
-CAPÍTULOS ANTERIORES (para manter coerência): ${prevCaps.join(', ')||'nenhum — este é o primeiro'}
+PARTE ${parte.numero}: ${parte.titulo}
+CAPÍTULO ${cap.numero}: ${cap.titulo}
+RESUMO: ${cap.resumo}
+CAPÍTULOS ANTERIORES (contexto): ${prevCapsStr}
 
-INSTRUÇÃO CRÍTICA:
-1. Escreva o conteúdo COMPLETO do capítulo — não resuma, não abrevia. Atinja ${cap.palavras_alvo} palavras.
-2. A primeira <page> DEVE ser <page class="chapter-page"> com chapter-num, h1, chapter-rule e o primeiro parágrafo com dropcap.
-3. Continue em <page> normais com <span class="runhead">${bookTitle}</span> até esgotar o conteúdo.
-4. Use h2 para seções internas se o conteúdo exigir.
-5. O texto deve ser ORIGINAL, rico, específico e no tom indicado. Nada genérico.
-6. NÃO inclua o número do capítulo no h1 — ele já vai no chapter-num.
+ESTA PARTE: Escreva os PRIMEIROS ${wordsThisPart} palavras de texto do capítulo.
+${!isLast?'ATENÇÃO: NÃO encerre o conteúdo — o capítulo continua em partes seguintes. Termine num ponto natural mas NÃO coloque conclusão.':''}
 
-Retorne APENAS o HTML das <page> deste capítulo.`;
+REGRAS:
+1. Comece com <page class="chapter-page"> contendo chapter-num, h1, chapter-rule e o primeiro parágrafo dropcap.
+2. Continue em <page> normais com runhead="${bookTitle}" conforme necessário.
+3. Conte as palavras rigorosamente: página chapter-page = 320 palavras úteis; página normal = 380 palavras.
+4. Texto original, rico, específico. Tom: ${outline.tom||'informativo'}.
+5. NÃO coloque o número do capítulo no h1.
 
-  await gemStream(apiKey,sys,user,onChunk,signal,0.75,8192);
+Retorne APENAS HTML de <page>...</page>.`;
+    }else{
+      user=`Continue escrevendo o capítulo. Retorne HTML de <page> com a continuação.
+
+LIVRO: "${bookTitle}" — Cap. ${cap.numero}: ${cap.titulo}
+CONTEXTO (HTML já gerado antes): últimas linhas do que foi escrito:
+${partHtmlAccum.slice(-800)}
+
+ESTA PARTE: Escreva as PRÓXIMAS ${wordsThisPart} palavras de texto.
+${!isLast?'ATENÇÃO: NÃO encerre o conteúdo — ainda há mais partes.':'ATENÇÃO: Esta é a última parte — conclua o capítulo naturalmente.'}
+
+REGRAS:
+1. Use APENAS <page> normais com <span class="runhead">${bookTitle}</span>. NÃO repita chapter-page.
+2. Página normal = 380 palavras. Conte rigorosamente e quebre em novas <page> quando necessário.
+3. Mantenha coerência e fluxo com o que foi escrito antes.
+4. NÃO repita conteúdo já escrito.
+
+Retorne APENAS HTML de <page>...</page>.`;
+    }
+
+    let partHtml='';
+    await gemStream(apiKey,sys,user,chunk=>{
+      partHtml+=chunk;
+      onChunk(chunk);
+    },signal,0.75,8192,onStatus);
+
+    partHtmlAccum+=partHtml;
+    // conta palavras escritas (aproximado pelo texto extraído)
+    const textOnly=partHtml.replace(/<[^>]+>/g,' ');
+    wordsWritten+=countWords(textOnly);
+
+    // Delay entre partes para evitar rate limit
+    if(!isLast&&!signal?.aborted){
+      await sleep(1500,signal);
+    }
+  }
 }
 
 /* ═══ COMPONENTS ═══ */
@@ -1130,18 +1242,19 @@ function App(){
     const ctrl=new AbortController();abrt.current=ctrl;
     let lastErr=null;
     try{
-      setLoading(true);setErr(null);
+      setLoading(true);setErr(null);setAiLabel('Gerando outline...');
       let ol=null;
-      // Up to 2 attempts in case of malformed JSON on first try
-      for(let attempt=0;attempt<2;attempt++){
+      for(let attempt=0;attempt<3;attempt++){
         if(ctrl.signal.aborted)return;
         try{
-          ol=await generateOutline(apiKey,form,ctrl.signal);
+          ol=await generateOutline(apiKey,form,ctrl.signal,msg=>setAiLabel(msg));
           break;
         }catch(e){
           if(e.name==='AbortError')return;
           lastErr=e;
-          if(attempt===0)await new Promise(r=>setTimeout(r,1200));
+          const wait=e.message?.includes('429')?[5000,12000][attempt]||15000:2000;
+          setAiLabel(`⏳ Aguardando ${Math.round(wait/1000)}s...`);
+          await sleep(wait,ctrl.signal).catch(()=>{});
         }
       }
       if(!ol)throw lastErr;
@@ -1152,7 +1265,7 @@ function App(){
       setShowOutline(true);
     }catch(e){
       if(e.name!=='AbortError')setErr('Erro ao gerar outline: '+e.message);
-    }finally{setLoading(false);}
+    }finally{setLoading(false);setAiLabel('');}
   };
 
   /* ── WRITE: ESCREVER TODOS OS CAPÍTULOS ── */
@@ -1161,38 +1274,28 @@ function App(){
     if(abrt.current)abrt.current.abort();
     const ctrl=new AbortController();abrt.current=ctrl;
 
-    // Flatten capítulos com referência à parte
     const allCaps=[];
     for(const pt of outline.partes){
       for(const cap of pt.capitulos){
         allCaps.push({parte:pt,cap});
       }
     }
-
     const bookTitle=outline.titulo||cfg.title||'Livro';
+
+    const onStatus=msg=>{if(abrt.current===ctrl)setAiLabel(msg);};
 
     try{
       setAiLoading(true);setErr(null);
       setAppMode('write');
 
-      // Gera páginas especiais no início (apenas se startCapIdx===0)
       let out=html||'';
       if(startCapIdx===0){
-        out='';
-        setHtml('');
-        setChapterStatus({});
-
-        // Página de título
+        out='';setHtml('');setChapterStatus({});
         if(cfg.addTitlePage){
-          out+=`<page class="title-page">
-<h1>${bookTitle}</h1>
-${outline.subtitulo?`<div class="subtitle">${outline.subtitulo}</div>`:''}
-<div class="author">${outline.autor||cfg.author||''}</div>
-</page>`;
+          out+=`<page class="title-page"><h1>${bookTitle}</h1>${outline.subtitulo?`<div class="subtitle">${outline.subtitulo}</div>`:''}<div class="author">${outline.autor||cfg.author||''}</div></page>`;
           setHtml(out);
         }
-
-        // Página de sumário (será atualizada ao final)
+        // Sumário inicial com ?
         out+=`<page class="toc-page"><h2>Sumário</h2>`;
         for(const pt of outline.partes){
           out+=`<div class="toc-entry toc-part"><span>PARTE ${pt.numero} — ${pt.titulo.toUpperCase()}</span><span class="toc-dots"></span><span>?</span></div>`;
@@ -1204,42 +1307,46 @@ ${outline.subtitulo?`<div class="subtitle">${outline.subtitulo}</div>`:''}
         setHtml(out);
       }
 
-      // Escreve cada capítulo
       for(let i=startCapIdx;i<allCaps.length;i++){
         if(ctrl.signal.aborted)return;
-        const {parte,cap}=allCaps[i];
+        const{parte,cap}=allCaps[i];
         setCurrentCap(cap.numero);
         setWriteStartIdx(i+1);
         setChapterStatus(prev=>({...prev,[cap.numero]:'writing'}));
-        setAiLabel(`Escrevendo Cap. ${cap.numero}/${allCaps.length}: ${cap.titulo}`);
+        const pags=calcChapterPages(cap.palavras_alvo||600);
+        onStatus(`✍ Cap. ${cap.numero}/${allCaps.length}: ${cap.titulo} (~${pags}pgs, ${cap.palavras_alvo}pal)`);
 
-        let capHtml='';
-        await generateChapter(apiKey,outline,parte,cap,bookTitle,
-          t=>{capHtml+=t;out+=t;setHtml(out);},
-          ctrl.signal
+        // Gera capítulo em partes (CHUNK_WORDS palavras por chamada)
+        await generateChapterInParts(
+          apiKey,outline,parte,cap,bookTitle,
+          t=>{
+            // filtra chunks de status que não são HTML
+            if(!t.startsWith('##'))out+=t;
+            setHtml(out);
+          },
+          ctrl.signal,
+          onStatus
         );
 
         setChapterStatus(prev=>({...prev,[cap.numero]:'done'}));
 
-        // Delay entre capítulos para evitar rate limit
-        if(i<allCaps.length-1)await new Promise(r=>setTimeout(r,1500));
+        // Delay entre capítulos
+        if(i<allCaps.length-1&&!ctrl.signal.aborted){
+          onStatus(`⏸ Pausa entre capítulos...`);
+          await sleep(2000,ctrl.signal);
+        }
       }
 
-      // Página de direitos ao final
       if(cfg.addCopyrightPage&&startCapIdx===0){
         const year=new Date().getFullYear();
-        out+=`<page class="copyright-page">
-<p class="no-indent">© ${year} ${outline.autor||cfg.author||''}</p>
-<p class="no-indent">Todos os direitos reservados.</p>
-<p class="no-indent">Proibida a reprodução total ou parcial sem autorização.</p>
-</page>`;
+        out+=`<page class="copyright-page"><p class="no-indent">© ${year} ${outline.autor||cfg.author||''}</p><p class="no-indent">Todos os direitos reservados.</p><p class="no-indent">Proibida a reprodução total ou parcial sem autorização.</p></page>`;
         setHtml(out);
       }
 
-      // Fix TOC com números reais
       const fixed=fixTocAndStrip(out);
       setHtml(fixed);
       setCurrentCap(null);
+      onStatus('✅ Livro concluído!');
 
     }catch(e){
       if(e.name==='AbortError')return;
@@ -1280,11 +1387,13 @@ ${outline.subtitulo?`<div class="subtitle">${outline.subtitulo}</div>`:''}
       setAiLoading(true);setErr(null);
       setChapterStatus(prev=>({...prev,[capNum]:'writing'}));
       setCurrentCap(capNum);
-      setAiLabel(`Regenerando Cap. ${capNum}: ${cap.titulo}`);
+      const onStatus=msg=>{if(abrt.current===ctrl)setAiLabel(msg);};
+      onStatus(`↺ Regenerando Cap. ${capNum}: ${cap.titulo}`);
 
       let newCapHtml='';
-      await generateChapter(apiKey,outline,parte,cap,bookTitle,
-        t=>{newCapHtml+=t;},ctrl.signal
+      await generateChapterInParts(apiKey,outline,parte,cap,bookTitle,
+        t=>{if(!t.startsWith('##'))newCapHtml+=t;},
+        ctrl.signal,onStatus
       );
 
       // Reinsere o capítulo regenerado no lugar correto
@@ -1399,7 +1508,7 @@ ${outline.subtitulo?`<div class="subtitle">${outline.subtitulo}</div>`:''}
       {showApi&&<ApiModal onClose={()=>setShowApi(false)} apiKey={apiKey} setApiKey={setApiKey}/>}
       {err&&<ErrModal msg={err} onClose={()=>setErr(null)}/>}
       {showOutline&&outline&&<OutlineModal outline={outline} onClose={()=>setShowOutline(false)} onConfirm={()=>{setShowOutline(false);doWriteBook(0);}}/>}
-      {loading&&<div className="load-overlay"><div style={{textAlign:'center'}}><div className="spin spin-dark" style={{width:36,height:36,borderWidth:3,margin:'0 auto 12px'}}/><p style={{fontFamily:"'Playfair Display',serif",color:'#c9884e',fontSize:14,marginTop:4}}>Gerando outline...</p></div></div>}
+      {loading&&<div className="load-overlay"><div style={{textAlign:'center'}}><div className="spin spin-dark" style={{width:36,height:36,borderWidth:3,margin:'0 auto 12px'}}/><p style={{fontFamily:"'Playfair Display',serif",color:'#c9884e',fontSize:14,marginTop:4}}>{aiLabel||'Gerando outline...'}</p></div></div>}
     </>
   );
 
