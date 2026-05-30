@@ -741,12 +741,9 @@ function buildRefsPageHtml(refs,bookTitle){
   for(let i=0;i<sorted.length;i+=REFS_PER_PAGE){
     const chunk=sorted.slice(i,i+REFS_PER_PAGE);
     const isFirst=(i===0);
-    pagesHtml+=`<page class="refs-page">
-<span class="runhead">${bookTitle||'—'}</span>
-${isFirst?'<h2>Referências Bibliográficas</h2>':''}
-${chunk.map(r=>`<p class="ref-item">${r}</p>`).join('
-')}
-</page>`;
+    const refItems=chunk.map(r=>'<p class="ref-item">'+r+'</p>').join('');
+    const heading=isFirst?'<h2>Referências Bibliográficas</h2>':'';
+    pagesHtml+='<page class="refs-page"><span class="runhead">'+(bookTitle||'—')+'</span>'+heading+refItems+'</page>';
   }
   return pagesHtml;
 }
