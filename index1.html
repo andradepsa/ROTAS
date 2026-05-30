@@ -131,6 +131,15 @@ page.title-page .author{font-family:'Playfair Display',serif;font-size:14pt;font
 page.copyright-page{padding-top:200px;font-size:9pt;color:#666;line-height:1.8}
 page.copyright-page p{text-indent:0;text-align:center}
 
+/* ── NOTAS DE RODAPÉ & REFERÊNCIAS ── */
+page .footnotes{position:absolute;bottom:20px;left:58px;right:72px;border-top:1px solid #bbb;padding-top:6px;}
+page .footnotes .fn{font-size:8.5pt;line-height:1.45;color:#444;font-family:'EB Garamond',serif;text-indent:0;margin-bottom:3px;}
+page .footnotes .fn sup{font-size:7pt;color:#999;margin-right:3px;}
+page sup.fnref{font-size:7.5pt;color:#c9884e;font-weight:700;line-height:0;vertical-align:super;margin-left:1px;}
+page.refs-page{padding-top:80px;}
+page.refs-page h2{font-family:'Playfair Display',serif;font-size:16pt;font-weight:700;text-align:center;margin:0 0 28px;color:#1a1a1a;letter-spacing:-0.2px;}
+page.refs-page .ref-item{font-size:9.5pt;line-height:1.55;color:#333;font-family:'EB Garamond',serif;margin-bottom:10px;padding-left:20px;text-indent:-20px;}
+
 /* UPLOAD / WRITE SCREEN */
 .home-screen{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#f5f2ee;padding:40px;gap:0}
 .home-hero{text-align:center;margin-bottom:36px}
@@ -249,10 +258,11 @@ const TRIM={
   'A4'     :{name:'A4 (21×29.7cm)',      w:8.27,h:11.69,pw:794, ph:1123},
 };
 
+const CITATION_STYLES=['ABNT (Brasil)','APA 7ª ed.','Chicago','Vancouver (Saúde)','Notas de rodapé simples'];
 const TONS=['Informativo e acessível','Inspirador e motivacional','Acadêmico e formal','Narrativo e literário','Prático e direto','Filosófico e reflexivo'];
 const GENEROS=['Autoajuda / Desenvolvimento pessoal','Negócios e empreendedorismo','Espiritualidade','Educação','Ficção literária','Memórias / Biografia','Saúde e bem-estar','História e política'];
 
-const DEF={trimSize:'6x9',title:'',author:'',dropCaps:true,addTitlePage:true,addCopyrightPage:true};
+const DEF={trimSize:'6x9',title:'',author:'',dropCaps:true,addTitlePage:true,addCopyrightPage:true,citationStyle:'ABNT (Brasil)',addRefsPage:true,useScholar:true};
 
 /* ═══ IDB ═══ */
 const db={
@@ -355,6 +365,71 @@ async function gemOnce(key,sys,user,signal,temp=0.2,maxTok=8192,onStatus=null){
   return out;
 }
 
+/* ═══ BUSCA DE REFERÊNCIAS VIA GOOGLE SEARCH ═══
+   Usa a ferramenta nativa google_search do Gemini para buscar
+   referências acadêmicas reais antes de escrever cada capítulo.
+   Retorna lista de referências verificadas com autor/título/ano reais.
+═══════════════════════════════════════════════════════ */
+async function fetchScholarRefs(key,capTitulo,capResumo,bookTema,genero,citStyle,signal,onStatus){
+  if(onStatus)onStatus(`🔍 Buscando referências: ${capTitulo}...`);
+  const MODEL_SEARCH='gemini-2.5-flash';
+  const BASE_URL='https://generativelanguage.googleapis.com/v1beta';
+
+  const sys=`Você é um pesquisador acadêmico. Sua tarefa é encontrar referências bibliográficas REAIS e verificáveis para embasar um capítulo de livro. Use a ferramenta de busca para pesquisar no Google Scholar e retorne apenas referências que existam de verdade.`;
+
+  const user=`Pesquise referências acadêmicas reais para o seguinte capítulo de livro:
+
+TEMA DO LIVRO: ${bookTema}
+GÊNERO: ${genero||'não-ficção'}
+TÍTULO DO CAPÍTULO: ${capTitulo}
+RESUMO: ${capResumo}
+
+TAREFA:
+1. Use a busca para encontrar 6 a 8 obras acadêmicas ou livros de referência REAIS sobre este tema.
+2. Priorize: livros clássicos, artigos citados mais de 100 vezes, autores com h-index alto, publicações de universidades renomadas.
+3. Busque em português E inglês (ambos são válidos).
+4. Para cada referência encontrada, liste no formato ${citStyle||'ABNT'}:
+   - ABNT: SOBRENOME, Nome. Título em itálico. Cidade: Editora, Ano.
+   - APA: Sobrenome, N. (Ano). Título. Editora.
+   - Chicago: Sobrenome, Nome. Título. Cidade: Editora, Ano.
+
+IMPORTANTE: Retorne APENAS referências que você confirmou existir via busca. Se não encontrar suficientes, diga quantas encontrou. Nunca invente.
+
+Retorne a lista numerada de referências, uma por linha, sem texto adicional.`;
+
+  try{
+    const resp=await fetch(`${BASE_URL}/models/${MODEL_SEARCH}:generateContent?key=${key}`,{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      signal,
+      body:JSON.stringify({
+        system_instruction:{parts:[{text:sys}]},
+        contents:[{role:'user',parts:[{text:user}]}],
+        tools:[{google_search:{}}],
+        generationConfig:{temperature:0.1,maxOutputTokens:2048},
+      }),
+    });
+    if(!resp.ok){
+      const e=await resp.json().catch(()=>({}));
+      console.warn('Scholar search failed:',e?.error?.message||resp.status);
+      return null;
+    }
+    const data=await resp.json();
+    // Extrai texto da resposta (pode ter múltiplos parts por causa do tool use)
+    const parts=data?.candidates?.[0]?.content?.parts||[];
+    const text=parts.map(p=>p.text||'').join('\n').trim();
+    // Extrai também groundingMetadata se disponível
+    const gm=data?.candidates?.[0]?.groundingMetadata;
+    const sources=gm?.groundingChunks?.map(c=>c?.web?.uri).filter(Boolean)||[];
+    if(!text)return null;
+    return {refs:text, sources};
+  }catch(e){
+    if(e.name==='AbortError')throw e;
+    console.warn('Scholar fetch error:',e.message);
+    return null;
+  }
+}
+
 /* ═══ TOC FIX ═══ */
 function fixTocAndStrip(rawHtml){
   let html=rawHtml.replace(/<span[^>]*class=["']pgnum["'][^>]*>[\s\S]*?<\/span>/gi,'');
@@ -415,49 +490,72 @@ function calcChapterPages(palavras){
 }
 
 /* ═══ SYSTEM PROMPT DIAGRAMADOR ═══ */
-function buildSys(bookTitle,userStyle){
-  return `Você é um diagramador editorial profissional. Sua tarefa é pegar texto bruto e convertê-lo em páginas HTML para livro KDP 6×9".
+function buildSys(bookTitle,userStyle,citationStyle){
+  const cs=citationStyle||'ABNT (Brasil)';
+  const citRules=`
+═══ CITAÇÕES OBRIGATÓRIAS ═══
+Todo capítulo DEVE ter PELO MENOS 4 citações de autores reais e relevantes ao tema.
+Formato inline: <sup class="fnref">N</sup> logo após a afirmação citada (N = número sequencial, reinicia em 1 a cada capítulo).
+No final de CADA <page> que contiver citações, ANTES de </page>, insira um bloco de notas:
+<div class="footnotes"><p class="fn"><sup>1</sup> Referência completa no estilo ${cs}.</p></div>
+Estilo ${cs}:
+- ABNT: SOBRENOME, Nome. <em>Título</em>. Cidade: Editora, Ano, p. N.
+- APA: Autor, A. (Ano). <em>Título</em>. Editora. p. N.
+- Chicago: Autor, <em>Título</em> (Cidade: Editora, Ano), N.
+- Vancouver: Autor. <em>Título</em>. Cidade: Editora; Ano. p. N.
+REGRAS CRÍTICAS DE CITAÇÃO:
+1. SOMENTE obras reais, publicadas, verificáveis — NUNCA invente autor, título ou editora.
+2. Prefira clássicos consagrados ou autores de referência internacional no gênero.
+3. Use <blockquote>citação direta<cite>— AUTOR, Obra, Ano, p. N</cite></blockquote> para trechos citados literalmente.
+4. As footnotes ficam posicionadas absolutamente no rodapé — não contam nas 380 palavras da página.
+5. Ao usar o mesmo autor em páginas diferentes, pode abreviar: SOBRENOME, op. cit., p. N.`;
+
+  return `Você é um escritor e diagramador editorial profissional especializado em livros acadêmicos e de não-ficção para o mercado brasileiro. Sua tarefa é escrever conteúdo rico e bem embasado em páginas HTML para livro KDP 6×9".
 
 ═══ REGRAS ABSOLUTAS ═══
 - NUNCA use style= em nenhum elemento.
 - NUNCA altere, resuma ou omita qualquer palavra do texto original.
 - NUNCA emita markdown, comentários ou texto — apenas HTML de <page>.
 - NUNCA crie classes fora da especificação abaixo.
+- NUNCA invente autores, títulos ou editoras — cite APENAS fontes reais e verificáveis.
 
 ═══ CAPACIDADE EXATA POR PÁGINA ═══
-• <page> normal: 380 palavras de texto corrido.
-• <page class="chapter-page">: o cabeçalho (chapter-num + h1 + chapter-rule) ocupa o equivalente a 60 palavras de espaço. Restam 320 palavras de texto.
-• h2 de seção dentro de uma página ocupa 30 palavras de espaço.
-• h3 ocupa 20 palavras de espaço.
-• ALGORITMO DE CONTAGEM: mantenha um contador wordsUsed. Ao abrir chapter-page: wordsUsed=60. Ao adicionar h2: wordsUsed+=30. Ao adicionar h3: wordsUsed+=20. Ao adicionar parágrafo: wordsUsed+=countWords(parágrafo). Capacidade da page atual = 320 se chapter-page, 380 se page normal. Se wordsUsed+novasPalavras > capacidade: FECHE a page atual e ABRA nova <page> com runhead, recomece wordsUsed=0.
+- <page> normal: 380 palavras de texto corrido (footnotes não contam).
+- <page class="chapter-page">: cabeçalho ocupa 60 palavras de espaço. Restam 320 palavras.
+- h2 dentro de page ocupa 30 palavras de espaço; h3 ocupa 20.
+- ALGORITMO: mantenha wordsUsed. Se wordsUsed+novasPalavras > capacidade: feche </page> e abra nova <page> com runhead. Footnotes sempre ANTES do </page> que as gerou.
 
 ═══ ESTRUTURA DE PÁGINA CAPÍTULO ═══
 <page class="chapter-page">
 <span class="chapter-num">CAPÍTULO N</span>
-<h1>Título do Capítulo</h1>
+<h1>Título</h1>
 <span class="chapter-rule"></span>
-<p class="dropcap">Primeiro parágrafo COMPLETO. Nunca feche esta page sem ao menos este parágrafo.</p>
-<p>Segundo parágrafo...</p>
+<p class="dropcap">Primeiro parágrafo.</p>
+<p>Segundo parágrafo.<sup class="fnref">1</sup></p>
+<div class="footnotes"><p class="fn"><sup>1</sup> AUTOR. <em>Obra</em>. Editora, Ano, p. N.</p></div>
 </page>
 
 ═══ ESTRUTURA DE PÁGINA NORMAL ═══
 <page>
 <span class="runhead">${bookTitle||'—'}</span>
-<p>Continua o texto...</p>
+<p>Texto com citação.<sup class="fnref">2</sup></p>
+<div class="footnotes"><p class="fn"><sup>2</sup> AUTOR. <em>Obra</em>. Editora, Ano, p. N.</p></div>
 </page>
 
 ═══ CLASSES DISPONÍVEIS ═══
-<p class="dropcap"> → ÚNICO por capítulo, APENAS o primeiro parágrafo após chapter-rule.
-<p class="no-indent"> → primeiro § após h2, h3, blockquote, epigraph ou ornament.
-<p> → parágrafos normais de continuidade (com recuo automático via CSS).
-<p class="center"> → parágrafo centralizado.
-<p class="ornament">✦  ✦  ✦</p> → separador de cena (ocupa ~10 palavras de espaço).
-<blockquote>texto<cite>— Fonte</cite></blockquote> → citação com bordinha laranja.
-<div class="epigraph">texto<cite>— Fonte</cite></div> → epígrafe no início de capítulo.
-<h2>Título de Seção</h2> → seção interna (30 palavras de espaço).
-<h3>Subtítulo</h3> → subseção (20 palavras de espaço).
-
-${userStyle?`═══ ESTILO ADICIONAL ═══\n${userStyle}\n`:''}
+<p class="dropcap"> → único por capítulo, primeiro § após chapter-rule.
+<p class="no-indent"> → primeiro § após h2, h3, blockquote ou ornament.
+<p> → parágrafos normais.
+<p class="center"> → centralizado.
+<p class="ornament">✦  ✦  ✦</p> → separador.
+<blockquote>citação<cite>— AUTOR, Obra, Ano, p. N</cite></blockquote> → citação direta longa.
+<div class="epigraph">texto<cite>— Fonte</cite></div> → epígrafe.
+<h2>Seção</h2> → seção interna.
+<h3>Subseção</h3> → subseção.
+<sup class="fnref">N</sup> → chamada de nota no texto.
+<div class="footnotes"><p class="fn"><sup>N</sup> Ref.</p></div> → rodapé da página.
+${citRules}
+${userStyle?'═══ ESTILO ADICIONAL ═══\n'+userStyle+'\n':''}
 RETORNE APENAS HTML de <page>...</page>. Zero texto fora das tags.`;
 }
 
@@ -599,9 +697,10 @@ Tom: ${form.tom}
 Páginas alvo: ${totalPags} (${totalPalavras} palavras no total)
 Capítulos: ${numCaps} distribuídos em partes temáticas
 Instruções extras: ${form.instrucoes||'nenhuma'}
+Estilo de citação: ${form.citacaoEstilo||'ABNT (Brasil)'}
 
 IMPORTANTE: Cada capítulo deve ter "palavras_alvo" = ${palavrasPorCap} (EXATAMENTE este número).
-Seja específico nos resumos — guie a escrita com conteúdo real.`;
+Seja específico nos resumos — guie a escrita com conteúdo real e indique autores de referência a citar em cada capítulo.`;
 
   if(onStatus)onStatus('Gerando estrutura do livro...');
   const raw=await gemOnce(apiKey,sys,user,signal,0.7,4096,onStatus);
@@ -614,10 +713,48 @@ Seja específico nos resumos — guie a escrita com conteúdo real.`;
 ═══════════════════════════════════════════════════════ */
 const CHUNK_WORDS=1200; // palavras máximas por chamada à API
 
-async function generateChapterInParts(apiKey,outline,parte,cap,bookTitle,onChunk,signal,onStatus){
+/* ═══ PÁGINA DE REFERÊNCIAS BIBLIOGRÁFICAS ═══
+   Extrai todas as footnotes do HTML gerado, deduplica e gera página final de referências.
+═══════════════════════════════════════════════════════ */
+function extractRefsFromHtml(html){
+  const doc=new DOMParser().parseFromString('<body>'+html+'</body>','text/html');
+  const refs=new Map();
+  doc.querySelectorAll('.fn').forEach(fn=>{
+    // Remove the sup number, get just the ref text
+    const sup=fn.querySelector('sup');
+    if(sup)sup.remove();
+    const text=fn.textContent.trim();
+    if(text.length>10&&!refs.has(text)){
+      refs.set(text,text);
+    }
+  });
+  return [...refs.values()];
+}
+
+function buildRefsPageHtml(refs,bookTitle){
+  if(!refs||refs.length===0)return'';
+  // Sort refs alphabetically
+  const sorted=[...refs].sort((a,b)=>a.localeCompare(b,'pt'));
+  // Split into pages of ~20 refs each (each ref ~12px*1.55*9.5pt ≈ 18pt ≈ ~3 lines)
+  const REFS_PER_PAGE=22;
+  let pagesHtml='';
+  for(let i=0;i<sorted.length;i+=REFS_PER_PAGE){
+    const chunk=sorted.slice(i,i+REFS_PER_PAGE);
+    const isFirst=(i===0);
+    pagesHtml+=`<page class="refs-page">
+<span class="runhead">${bookTitle||'—'}</span>
+${isFirst?'<h2>Referências Bibliográficas</h2>':''}
+${chunk.map(r=>`<p class="ref-item">${r}</p>`).join('
+')}
+</page>`;
+  }
+  return pagesHtml;
+}
+
+async function generateChapterInParts(apiKey,outline,parte,cap,bookTitle,onChunk,signal,onStatus,citationStyle,useScholar){
   const totalWords=cap.palavras_alvo||600;
   const numParts=Math.ceil(totalWords/CHUNK_WORDS);
-  const sys=buildSys(bookTitle,'');
+  const cs=citationStyle||'ABNT (Brasil)';
   const prevCaps=[];
   outer:for(const pt of outline.partes){
     for(const c of pt.capitulos){
@@ -627,13 +764,36 @@ async function generateChapterInParts(apiKey,outline,parte,cap,bookTitle,onChunk
   }
   const prevCapsStr=prevCaps.slice(-5).join(', ')||'nenhum';
 
-  let partHtmlAccum=''; // HTML gerado nas partes anteriores deste capítulo
+  // ── BUSCA REFERÊNCIAS REAIS ANTES DE ESCREVER ──
+  let scholarBlock='';
+  if(useScholar!==false)try{
+    const scholarResult=await fetchScholarRefs(
+      apiKey,cap.titulo,cap.resumo,
+      outline.titulo||bookTitle,outline.genero||'',
+      cs,signal,onStatus
+    );
+    if(scholarResult?.refs){
+      scholarBlock=`
+REFERÊNCIAS VERIFICADAS VIA GOOGLE SCHOLAR (use APENAS estas — são reais e verificadas):
+${scholarResult.refs}
+
+INSTRUÇÃO CRÍTICA: Cite pelo menos 4 das referências acima ao longo do capítulo usando <sup class="fnref">N</sup> e registre-as no <div class="footnotes"> ao final de cada page. NÃO invente outras referências além destas.`;
+    }
+  }catch(e){
+    if(e.name==='AbortError')throw e;
+    // Se busca falhar, continua sem referências externas
+    console.warn('Scholar search skipped:',e.message);
+  }
+
+  const sys=buildSys(bookTitle,'',cs);
+
+  let partHtmlAccum='';
   let wordsWritten=0;
 
   for(let part=1;part<=numParts;part++){
     if(signal?.aborted)return;
     const wordsThisPart=Math.min(CHUNK_WORDS,totalWords-wordsWritten);
-    if(onStatus)onStatus(`Cap. ${cap.numero}/${totalWords>0?Math.ceil(totalWords/380):1}pgs — parte ${part}/${numParts} (${wordsThisPart} palavras)...`);
+    if(onStatus)onStatus(`Cap. ${cap.numero} — parte ${part}/${numParts} (${wordsThisPart} palavras)...`);
 
     const isFirst=(part===1);
     const isLast=(part===numParts);
@@ -648,6 +808,7 @@ PARTE ${parte.numero}: ${parte.titulo}
 CAPÍTULO ${cap.numero}: ${cap.titulo}
 RESUMO: ${cap.resumo}
 CAPÍTULOS ANTERIORES (contexto): ${prevCapsStr}
+${scholarBlock}
 
 ESTA PARTE: Escreva os PRIMEIROS ${wordsThisPart} palavras de texto do capítulo.
 ${!isLast?'ATENÇÃO: NÃO encerre o conteúdo — o capítulo continua em partes seguintes. Termine num ponto natural mas NÃO coloque conclusão.':''}
@@ -756,6 +917,22 @@ function SidebarDocx({cfg,setCfg,blocks,processedIdx,html,aiLoading,onDiagram,on
           </div>
         </div>
         <div className="sec">
+          <div className="sec-title">Citações & Referências</div>
+          <div className="sec-body">
+            <div className="tog-row"><span className="tog-label">Página de Refs</span><Toggle v={cfg.addRefsPage} onChange={v=>upd('addRefsPage',v)}/></div>
+            <div className="tog-row">
+              <span className="tog-label" style={{lineHeight:1.3}}>Google Scholar<br/><span style={{fontSize:9,color:'#666',fontWeight:400}}>busca refs reais antes de escrever</span></span>
+              <Toggle v={cfg.useScholar!==false} onChange={v=>upd('useScholar',v)}/>
+            </div>
+            <div className="f-row">
+              <span className="f-label" style={{width:60}}>Estilo</span>
+              <select className="f-input" value={cfg.citationStyle||'ABNT (Brasil)'} onChange={e=>upd('citationStyle',e.target.value)}>
+                {CITATION_STYLES.map(s=><option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
+          </div>
+        </div>
+        <div className="sec">
           <div className="sec-title">Opções</div>
           <div className="sec-body">
             {[['dropCaps','Drop Caps'],['addTitlePage','Pg. Título'],['addCopyrightPage','Pg. Direitos']].map(([k,l])=>(
@@ -769,7 +946,7 @@ function SidebarDocx({cfg,setCfg,blocks,processedIdx,html,aiLoading,onDiagram,on
 }
 
 /* Sidebar para modo ESCREVER */
-function SidebarWrite({cfg,setCfg,outline,chapterStatus,aiLoading,currentCap,onPdf,onDocx,onExportJpgs,onApiKey,onNewFile,html,onRegenChapter}){
+function SidebarWrite({cfg,setCfg,outline,chapterStatus,aiLoading,currentCap,onPdf,onDocx,onExportJpgs,onApiKey,onNewFile,html,onRegenChapter,onResumeWrite,writeStartIdx}){
   const upd=(k,v)=>setCfg(c=>({...c,[k]:v}));
   const totalCaps=outline?outline.partes.reduce((a,p)=>a+p.capitulos.length,0):0;
   const doneCaps=Object.values(chapterStatus).filter(s=>s==='done').length;
@@ -788,6 +965,14 @@ function SidebarWrite({cfg,setCfg,outline,chapterStatus,aiLoading,currentCap,onP
               <div className="prog-label"><span>Capítulos escritos</span><span>{doneCaps}/{totalCaps} ({pct}%)</span></div>
               <div className="prog-wrap"><div className="prog-fill" style={{width:`${pct}%`}}/></div>
               {currentCap&&<div style={{fontSize:11,color:'#c9884e',marginTop:6}}>✍ Escrevendo: Cap. {currentCap}</div>}
+              {!aiLoading&&doneCaps<totalCaps&&writeStartIdx>0&&(
+                <button className="btn btn-gold" style={{marginTop:6,fontSize:11}} onClick={onResumeWrite}>
+                  ↩ Continuar escrita (Cap. {writeStartIdx+1})
+                </button>
+              )}
+              {!aiLoading&&doneCaps===totalCaps&&totalCaps>0&&(
+                <div style={{fontSize:11,color:'#86efac',marginTop:6}}>✅ Todos os capítulos concluídos!</div>
+              )}
             </div>
           </div>
         )}
@@ -920,7 +1105,7 @@ function Preview({html,aiLoading,label}){
 }
 
 /* TELA INICIAL — seleção de modo */
-function HomeScreen({onDocx,onWrite,onApiKey,loading}){
+function HomeScreen({onDocx,onWrite,onApiKey,loading,savedSession,onResumeSaved,onDiscardSaved}){
   const [mode,setMode]=useState('docx');
   const [drag,setDrag]=useState(false);
 
@@ -936,6 +1121,37 @@ function HomeScreen({onDocx,onWrite,onApiKey,loading}){
 
   return(
     <div className="home-screen">
+      {savedSession&&(
+        <div style={{
+          width:'100%',maxWidth:740,marginBottom:20,
+          background:'#fdf3e7',border:'2px solid #c9884e',borderRadius:14,
+          padding:'16px 20px',display:'flex',alignItems:'center',gap:16,flexWrap:'wrap'
+        }}>
+          <div style={{fontSize:28,flexShrink:0}}>💾</div>
+          <div style={{flex:1,minWidth:180}}>
+            <div style={{fontFamily:"'Playfair Display',serif",fontSize:15,fontWeight:700,color:'#1c1c1e',marginBottom:3}}>
+              Sessão salva encontrada
+            </div>
+            <div style={{fontSize:12,color:'#666',lineHeight:1.5}}>
+              {savedSession.titulo&&<><strong>{savedSession.titulo}</strong>{" — "}</>}
+              {savedSession.capsFeitos>0
+                ?`${savedSession.capsFeitos} de ${savedSession.capsTotal} capítulos escritos. Continuar de onde parou?`
+                :savedSession.mode==='docx'
+                  ?'Manuscrito diagramado salvo. Retomar sessão?'
+                  :'Rascunho salvo. Retomar sessão?'
+              }
+            </div>
+          </div>
+          <div style={{display:'flex',gap:8,flexShrink:0}}>
+            <button className="btn btn-gold" style={{width:'auto',padding:'7px 16px',fontSize:12}} onClick={onResumeSaved}>
+              ↩ Continuar
+            </button>
+            <button className="btn btn-ghost" style={{width:'auto',padding:'7px 14px',fontSize:12}} onClick={onDiscardSaved}>
+              Descartar
+            </button>
+          </div>
+        </div>
+      )}
       <div className="home-hero">
         <h1>Seu <em>livro</em>, do zero ao KDP</h1>
         <p>Envie um manuscrito Word ou deixe a IA escrever seu livro completo do zero — diagramado e pronto para publicar.</p>
@@ -1155,6 +1371,7 @@ async function exportDocxFromHtml(htmlStr,config){
 function App(){
   // MODO: 'home' | 'docx' | 'write'
   const [appMode,setAppMode]=useState('home');
+  const [savedSession,setSavedSession]=useState(null);
 
   // ESTADO COMUM
   const [cfg,setCfg]=useState(DEF);
@@ -1181,7 +1398,7 @@ function App(){
   const [currentCap,setCurrentCap]=useState(null);
   const [writeStartIdx,setWriteStartIdx]=useState(0);  // próximo capítulo a escrever
 
-  // RESTORE
+  // RESTORE — carrega dados salvos e oferece banner de "continuar" em vez de restaurar direto
   useEffect(()=>{
     setApiKey(localStorage.getItem('kdp-key')||'');
     (async()=>{
@@ -1193,14 +1410,46 @@ function App(){
       const cs=await db.get('kdp-chstatus');
       const wi=await db.get('kdp-writeIdx');
       const wf=await db.get('kdp-writeform');
-      if(mode)setAppMode(mode);
-      if(h)setHtml(h);
-      if(b)setBlocks(b);
-      if(p!=null)setPidx(p);
-      if(ol)setOutline(ol);
-      if(cs)setChapterStatus(cs);
-      if(wi!=null)setWriteStartIdx(wi);
-      if(wf)setWriteForm(wf);
+
+      // Se há sessão válida salva, mostra banner em vez de restaurar automaticamente
+      const hasSaved=(mode&&mode!=='home'&&h)||( mode==='write'&&ol&&wi>0);
+      if(hasSaved){
+        // Calcula progresso para exibir no banner
+        let capsTotal=0,capsFeitos=0;
+        if(ol&&ol.partes){
+          for(const pt of ol.partes) capsTotal+=pt.capitulos.length;
+          if(cs) capsFeitos=Object.values(cs).filter(v=>v==='done').length;
+        }
+        // Determina se a escrita está incompleta (há capítulos pendentes)
+        const writeIncomplete=mode==='write'&&ol&&wi<capsTotal;
+        setSavedSession({
+          mode,
+          titulo:ol?.titulo||'',
+          capsFeitos,
+          capsTotal,
+          writeIncomplete,
+          // Guarda tudo para restaurar quando o usuário confirmar
+          _h:h,_b:b,_p:p,_ol:ol,_cs:cs,_wi:wi,_wf:wf,
+        });
+        // Pré-carrega estado silenciosamente (sem mudar o modo)
+        if(h)setHtml(h);
+        if(b)setBlocks(b);
+        if(p!=null)setPidx(p);
+        if(ol)setOutline(ol);
+        if(cs)setChapterStatus(cs);
+        if(wi!=null)setWriteStartIdx(wi);
+        if(wf)setWriteForm(wf);
+      } else {
+        // Sem sessão relevante: restaura normalmente
+        if(mode&&mode!=='home')setAppMode(mode);
+        if(h)setHtml(h);
+        if(b)setBlocks(b);
+        if(p!=null)setPidx(p);
+        if(ol)setOutline(ol);
+        if(cs)setChapterStatus(cs);
+        if(wi!=null)setWriteStartIdx(wi);
+        if(wf)setWriteForm(wf);
+      }
       if(h&&location.search.includes('print=1'))setTimeout(()=>window.print(),1200);
     })();
   },[]);
@@ -1333,6 +1582,7 @@ function App(){
       setWriteForm(form);
       setOutline(ol);
       db.set('kdp-writeform',form);
+      form.citacaoEstilo=cfg.citationStyle||'ABNT (Brasil)';
       setCfg(c=>({...c,title:ol.titulo||form.titulo,author:ol.autor||form.autor}));
       setShowOutline(true);
     }catch(e){
@@ -1417,11 +1667,17 @@ function App(){
             }
           },
           ctrl.signal,
-          onStatus
+          onStatus,
+          cfg.citationStyle||'ABNT (Brasil)',
+          cfg.useScholar!==false
         );
         flushNow(); // garante que o último pedaço seja mostrado
 
         setChapterStatus(prev=>({...prev,[cap.numero]:'done'}));
+        // Salva progresso imediatamente após cada capítulo concluído
+        await db.set('kdp-html',out);
+        await db.set('kdp-writeIdx',i+1);
+        await db.set('kdp-chstatus',{...chapterStatus,[cap.numero]:'done'});
 
         if(i<allCaps.length-1&&!ctrl.signal.aborted){
           onStatus(`⏸ Intervalo entre capítulos...`);
@@ -1435,8 +1691,18 @@ function App(){
         setHtml(out);
       }
 
+      // Gerar página de referências bibliográficas
+      if(cfg.addRefsPage){
+        const refs=extractRefsFromHtml(out);
+        if(refs.length>0){
+          const refsHtml=buildRefsPageHtml(refs,bookTitle);
+          out+=refsHtml;
+        }
+      }
+
       const fixed=fixTocAndStrip(out);
       setHtml(fixed);
+      await db.set('kdp-html',fixed);
       setCurrentCap(null);
       onStatus('✅ Livro concluído!');
 
@@ -1613,6 +1879,33 @@ function App(){
     db.set('kdp-outline',null);db.set('kdp-chstatus',{});db.set('kdp-writeIdx',0);
   };
 
+  /* ── RESUME WRITE FROM SAVED INDEX ── */
+  const handleResumeWrite=useCallback(()=>{
+    if(!outline||!apiKey)return;
+    doWriteBook(writeStartIdx);
+  },[outline,apiKey,writeStartIdx,doWriteBook]);
+
+  /* ── RESUME / DISCARD SAVED SESSION ── */
+  const handleResumeSaved=useCallback(()=>{
+    if(!savedSession)return;
+    setAppMode(savedSession.mode);
+    setSavedSession(null);
+    // Se é modo write com capítulos pendentes, oferece continuar escrita
+    if(savedSession.writeIncomplete&&savedSession._wi>0){
+      // doWriteBook será chamado pelo usuário via botão na sidebar (writeStartIdx já está setado)
+    }
+  },[savedSession]);
+
+  const handleDiscardSaved=useCallback(()=>{
+    setSavedSession(null);
+    // Limpa tudo do IDB
+    setHtml(null);setBlocks(null);setPidx(0);
+    setOutline(null);setChapterStatus({});setWriteStartIdx(0);setWriteForm(null);
+    db.set('kdp-mode','home');db.set('kdp-blocks',null);db.set('kdp-html',null);
+    db.set('kdp-outline',null);db.set('kdp-chstatus',{});db.set('kdp-writeIdx',0);
+    db.set('kdp-writeform',null);
+  },[]);
+
   /* ── RENDER ── */
 
   if(appMode==='home') return(
@@ -1621,7 +1914,10 @@ function App(){
         onDocx={handleFile}
         onWrite={handleWriteStart}
         onApiKey={()=>setShowApi(true)}
-        loading={loading}/>
+        loading={loading}
+        savedSession={savedSession}
+        onResumeSaved={handleResumeSaved}
+        onDiscardSaved={handleDiscardSaved}/>
       {showApi&&<ApiModal onClose={()=>setShowApi(false)} apiKey={apiKey} setApiKey={setApiKey}/>}
       {err&&<ErrModal msg={err} onClose={()=>setErr(null)}/>}
       {showOutline&&outline&&<OutlineModal outline={outline} onClose={()=>setShowOutline(false)} onConfirm={()=>{setShowOutline(false);doWriteBook(0);}}/>}
@@ -1651,7 +1947,8 @@ function App(){
         chapterStatus={chapterStatus} aiLoading={aiLoading} currentCap={currentCap}
         onPdf={()=>setShowPdf(true)} onDocx={handleDocxExportWrite} onExportJpgs={handleExportJpgs}
         onApiKey={()=>setShowApi(true)} onNewFile={reset}
-        html={html} onRegenChapter={handleRegenChapter}/>
+        html={html} onRegenChapter={handleRegenChapter}
+        onResumeWrite={handleResumeWrite} writeStartIdx={writeStartIdx}/>
       <Preview html={html} aiLoading={aiLoading} label={aiLabel}/>
       {aiLoading&&<div className="toast"><div className="spin"/>{aiLabel||'Escrevendo...'}</div>}
       {showApi&&<ApiModal onClose={()=>setShowApi(false)} apiKey={apiKey} setApiKey={setApiKey}/>}
