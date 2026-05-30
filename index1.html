@@ -769,7 +769,7 @@ function SidebarDocx({cfg,setCfg,blocks,processedIdx,html,aiLoading,onDiagram,on
 }
 
 /* Sidebar para modo ESCREVER */
-function SidebarWrite({cfg,setCfg,outline,chapterStatus,aiLoading,currentCap,onPdf,onExportJpgs,onApiKey,onNewFile,html,onRegenChapter}){
+function SidebarWrite({cfg,setCfg,outline,chapterStatus,aiLoading,currentCap,onPdf,onDocx,onExportJpgs,onApiKey,onNewFile,html,onRegenChapter}){
   const upd=(k,v)=>setCfg(c=>({...c,[k]:v}));
   const totalCaps=outline?outline.partes.reduce((a,p)=>a+p.capitulos.length,0):0;
   const doneCaps=Object.values(chapterStatus).filter(s=>s==='done').length;
@@ -794,7 +794,7 @@ function SidebarWrite({cfg,setCfg,outline,chapterStatus,aiLoading,currentCap,onP
         {outline&&(
           <div className="sec">
             <div className="sec-title">Capítulos</div>
-            <div className="sec-body" style={{maxHeight:300,overflowY:'auto',gap:4}}>
+            <div className="sec-body" style={{maxHeight:200,overflowY:'auto',gap:4}}>
               {outline.partes.map(pt=>pt.capitulos.map(cap=>{
                 const st=chapterStatus[cap.numero]||'pending';
                 return(
@@ -813,19 +813,30 @@ function SidebarWrite({cfg,setCfg,outline,chapterStatus,aiLoading,currentCap,onP
           <div className="sec-title">Exportar</div>
           <div className="sec-body">
             <button className="btn btn-gold" onClick={onPdf} disabled={!html}>📸 PDF Screenshot KDP</button>
+            <button className="btn btn-dark" onClick={onDocx} disabled={!html}>📄 Exportar DOCX</button>
             <button className="btn btn-ghost" onClick={onExportJpgs} disabled={!html} style={{fontSize:11}}>🖼 Salvar páginas como JPG</button>
             <button className="btn btn-ghost" onClick={onApiKey} style={{fontSize:11}}>🔑 Chave API Gemini</button>
           </div>
         </div>
         <div className="div"/>
         <div className="sec">
-          <div className="sec-title">Configuração</div>
+          <div className="sec-title">Livro</div>
           <div className="sec-body">
+            <div className="f-row"><span className="f-label">Título</span><input className="f-input" value={cfg.title} onChange={e=>upd('title',e.target.value)} placeholder="Título"/></div>
+            <div className="f-row"><span className="f-label">Autor</span><input className="f-input" value={cfg.author} onChange={e=>upd('author',e.target.value)} placeholder="Autor"/></div>
             <div className="f-row"><span className="f-label">Tamanho</span>
               <select className="f-input" value={cfg.trimSize} onChange={e=>upd('trimSize',e.target.value)}>
                 {Object.entries(TRIM).map(([k,v])=><option key={k} value={k}>{v.name}</option>)}
               </select>
             </div>
+          </div>
+        </div>
+        <div className="sec">
+          <div className="sec-title">Opções</div>
+          <div className="sec-body">
+            {[['dropCaps','Drop Caps'],['addTitlePage','Pg. Título'],['addCopyrightPage','Pg. Direitos']].map(([k,l])=>(
+              <div key={k} className="tog-row"><span className="tog-label">{l}</span><Toggle v={cfg[k]} onChange={v=>upd(k,v)}/></div>
+            ))}
           </div>
         </div>
       </div>
@@ -834,13 +845,37 @@ function SidebarWrite({cfg,setCfg,outline,chapterStatus,aiLoading,currentCap,onP
 }
 
 function Preview({html,aiLoading,label}){
-  const pages=useMemo(()=>{
-    if(!html||!html.toLowerCase().includes('<page'))return null;
-    return html.split(/(?=<page[\s>])/i).filter(p=>p.trim()&&p.toLowerCase().startsWith('<page'));
-  },[html]);
+  const scrollRef=useRef(null);
+  const prevPageCount=useRef(0);
 
+  // Separa páginas completas (com </page>) de uma possível página parcial em construção
+  const {pages,partial}=useMemo(()=>{
+    if(!html||!html.toLowerCase().includes('<page'))return{pages:null,partial:null};
+    const all=html.split(/(?=<page[\s>])/i).filter(p=>p.trim()&&p.toLowerCase().startsWith('<page'));
+    if(!all.length)return{pages:null,partial:null};
+    const last=all[all.length-1];
+    // Se a última "página" não tem </page>, é parcial (sendo escrita agora)
+    if(aiLoading&&!last.toLowerCase().includes('</page>')){
+      return{pages:all.slice(0,-1),partial:last};
+    }
+    return{pages:all,partial:null};
+  },[html,aiLoading]);
+
+  // Auto-scroll para a última página quando uma nova página completa aparecer
   useEffect(()=>{
-    const wrappers=document.querySelectorAll('.pg-wrap');
+    const count=(pages?.length||0)+(partial?1:0);
+    if(count>prevPageCount.current&&scrollRef.current){
+      prevPageCount.current=count;
+      setTimeout(()=>{
+        const el=scrollRef.current;
+        if(el)el.scrollTop=el.scrollHeight;
+      },60);
+    }
+  },[pages,partial]);
+
+  // Verifica overflow nas páginas completas
+  useEffect(()=>{
+    const wrappers=document.querySelectorAll('.pg-wrap:not(.pg-partial)');
     wrappers.forEach(wrap=>{
       const pageEl=wrap.querySelector('page');
       if(!pageEl)return;
@@ -853,12 +888,26 @@ function Preview({html,aiLoading,label}){
   return(
     <div className="pv">
       <div className="pv-bar">
-        <span className="pv-bar-title">{pages?`${pages.length} página${pages.length!==1?'s':''}`:aiLoading?'Gerando...':'Visualização'}</span>
+        <span className="pv-bar-title">
+          {pages
+            ?`${pages.length+(partial?1:0)} página${(pages.length+(partial?1:0))!==1?'s':''}`
+            :aiLoading?'Gerando...':'Visualização'}
+        </span>
         {aiLoading&&<span style={{fontSize:12,color:'#c9884e',display:'flex',alignItems:'center',gap:6}}><div className="spin spin-dark"/>{label||'Processando...'}</span>}
       </div>
-      <div className="pv-scroll" id="pv">
+      <div className="pv-scroll" id="pv" ref={scrollRef}>
         {pages
-          ?pages.map((h,i)=><div key={i} className="pg-wrap" dangerouslySetInnerHTML={{__html:h}}/>)
+          ?<>
+            {pages.map((h,i)=><div key={i} className="pg-wrap" dangerouslySetInnerHTML={{__html:h}}/>)}
+            {partial&&(
+              <div className="pg-wrap pg-partial" style={{opacity:0.7,position:'relative'}}>
+                <div dangerouslySetInnerHTML={{__html:partial+'</page>'}}/>
+                <div style={{position:'absolute',bottom:8,right:10,fontSize:10,color:'#c9884e',fontFamily:'system-ui',display:'flex',alignItems:'center',gap:5}}>
+                  <div className="spin spin-dark" style={{width:10,height:10,borderWidth:1.5}}/>escrevendo...
+                </div>
+              </div>
+            )}
+          </>
           :<div className="empty">
             <div className="empty-icon">📖</div>
             <h3>{aiLoading?'Gerando livro...':'Aguardando conteúdo'}</h3>
@@ -1281,7 +1330,6 @@ function App(){
       }
     }
     const bookTitle=outline.titulo||cfg.title||'Livro';
-
     const onStatus=msg=>{if(abrt.current===ctrl)setAiLabel(msg);};
 
     try{
@@ -1295,7 +1343,6 @@ function App(){
           out+=`<page class="title-page"><h1>${bookTitle}</h1>${outline.subtitulo?`<div class="subtitle">${outline.subtitulo}</div>`:''}<div class="author">${outline.autor||cfg.author||''}</div></page>`;
           setHtml(out);
         }
-        // Sumário inicial com ?
         out+=`<page class="toc-page"><h2>Sumário</h2>`;
         for(const pt of outline.partes){
           out+=`<div class="toc-entry toc-part"><span>PARTE ${pt.numero} — ${pt.titulo.toUpperCase()}</span><span class="toc-dots"></span><span>?</span></div>`;
@@ -1314,25 +1361,47 @@ function App(){
         setWriteStartIdx(i+1);
         setChapterStatus(prev=>({...prev,[cap.numero]:'writing'}));
         const pags=calcChapterPages(cap.palavras_alvo||600);
-        onStatus(`✍ Cap. ${cap.numero}/${allCaps.length}: ${cap.titulo} (~${pags}pgs, ${cap.palavras_alvo}pal)`);
+        onStatus(`✍ Cap. ${cap.numero}/${allCaps.length}: ${cap.titulo} (~${pags}pgs)`);
 
-        // Gera capítulo em partes (CHUNK_WORDS palavras por chamada)
+        /* ── STREAMING COM BUFFER DE PÁGINA ──
+           Acumula chunks até fechar uma </page> completa,
+           depois atualiza o preview — igual ao modo DOCX.
+           Também faz flush a cada ~120 chars para mostrar
+           texto parcial da página em formação. */
+        let streamBuf=''; // buffer do chunk corrente
+        let flushTimer=null;
+
+        const flushNow=()=>{
+          if(flushTimer){clearTimeout(flushTimer);flushTimer=null;}
+          if(streamBuf){out+=streamBuf;streamBuf='';setHtml(out);}
+        };
+
         await generateChapterInParts(
           apiKey,outline,parte,cap,bookTitle,
-          t=>{
-            // filtra chunks de status que não são HTML
-            if(!t.startsWith('##'))out+=t;
-            setHtml(out);
+          chunk=>{
+            if(chunk.startsWith('##'))return; // tokens de controle
+            streamBuf+=chunk;
+            // Flush imediato ao fechar uma página completa
+            if(streamBuf.includes('</page>')){
+              flushNow();
+            } else {
+              // Flush parcial a cada ~120 chars para mostrar texto em formação
+              if(streamBuf.length>=120){flushNow();}
+              else{
+                clearTimeout(flushTimer);
+                flushTimer=setTimeout(flushNow,80);
+              }
+            }
           },
           ctrl.signal,
           onStatus
         );
+        flushNow(); // garante que o último pedaço seja mostrado
 
         setChapterStatus(prev=>({...prev,[cap.numero]:'done'}));
 
-        // Delay entre capítulos
         if(i<allCaps.length-1&&!ctrl.signal.aborted){
-          onStatus(`⏸ Pausa entre capítulos...`);
+          onStatus(`⏸ Intervalo entre capítulos...`);
           await sleep(2000,ctrl.signal);
         }
       }
@@ -1391,10 +1460,28 @@ function App(){
       onStatus(`↺ Regenerando Cap. ${capNum}: ${cap.titulo}`);
 
       let newCapHtml='';
+      let streamBuf2='',flushTimer2=null;
+      const flushRegen=()=>{
+        if(flushTimer2){clearTimeout(flushTimer2);flushTimer2=null;}
+        if(streamBuf2){
+          newCapHtml+=streamBuf2;
+          // Mostra preview em tempo real durante a regeneração
+          const previewHtml=curHtml+newCapHtml;
+          setHtml(previewHtml);
+          streamBuf2='';
+        }
+      };
       await generateChapterInParts(apiKey,outline,parte,cap,bookTitle,
-        t=>{if(!t.startsWith('##'))newCapHtml+=t;},
+        chunk=>{
+          if(chunk.startsWith('##'))return;
+          streamBuf2+=chunk;
+          if(streamBuf2.includes('</page>')){flushRegen();}
+          else if(streamBuf2.length>=120){flushRegen();}
+          else{clearTimeout(flushTimer2);flushTimer2=setTimeout(flushRegen,80);}
+        },
         ctrl.signal,onStatus
       );
+      flushRegen();
 
       // Reinsere o capítulo regenerado no lugar correto
       // Localiza onde inserir: antes da próxima chapter-page do capítulo seguinte
@@ -1482,6 +1569,31 @@ function App(){
     }finally{setLoading(false);}
   },[cfg]);
 
+/* ═══ DOCX EXPORT FROM HTML (modo Write) ═══
+   Extrai o texto das <page> geradas e monta blocos compatíveis com exportDocx
+═══════════════════════════════════════════════════════ */
+async function exportDocxFromHtml(htmlStr,config){
+  const doc=new DOMParser().parseFromString(`<body>${htmlStr}</body>`,'text/html');
+  const blocks=[];
+  doc.querySelectorAll('page').forEach(pg=>{
+    pg.childNodes.forEach(node=>{
+      if(node.nodeType!==1)return;
+      const tag=node.tagName.toLowerCase();
+      const raw=(node.textContent||'').trim();
+      if(!raw)return;
+      if(tag==='h1'){blocks.push({type:'heading1',text:raw,isFirst:false});return;}
+      if(tag==='h2'){blocks.push({type:'heading2',text:raw,isFirst:false});return;}
+      if(tag==='h3'){blocks.push({type:'heading3',text:raw,isFirst:false});return;}
+      if(tag==='blockquote'){blocks.push({type:'blockquote',text:raw,isFirst:false});return;}
+      if(node.classList?.contains('chapter-num')||node.classList?.contains('chapter-rule')||node.classList?.contains('runhead'))return;
+      const isFirst=node.classList?.contains('dropcap')||node.classList?.contains('no-indent');
+      if(node.classList?.contains('ornament')){blocks.push({type:'separator',text:raw,isFirst:false});return;}
+      blocks.push({type:'paragraph',text:raw,isFirst:!!isFirst});
+    });
+  });
+  await exportDocx(blocks,config);
+}
+
   const handleDocxExport=async()=>{
     if(!blocks)return;
     try{setLoading(true);await exportDocx(blocks,cfg);}
@@ -1489,7 +1601,12 @@ function App(){
     finally{setLoading(false);}
   };
 
-  const reset=()=>{
+  const handleDocxExportWrite=async()=>{
+    if(!html)return;
+    try{setLoading(true);await exportDocxFromHtml(html,cfg);}
+    catch(e){setErr('Erro DOCX: '+e.message);}
+    finally{setLoading(false);}
+  };
     setAppMode('home');setBlocks(null);setHtml(null);setPidx(0);
     setOutline(null);setChapterStatus({});setWriteStartIdx(0);setWriteForm(null);setCurrentCap(null);
     db.set('kdp-mode','home');db.set('kdp-blocks',null);db.set('kdp-html',null);
