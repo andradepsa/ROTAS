@@ -6,7 +6,7 @@
 <title>KDP Diagramador IA</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
-<script src="https://unpkg.com/docx@8.2.2/build/index.js"></script>
+<script src="https://unpkg.com/docx@7.8.2/build/index.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://unpkg.com/idb-keyval@6/dist/umd.js"></script>
@@ -277,7 +277,7 @@ async function gemStream(key,sys,user,onChunk,signal,temp=0.1,maxTok=8192){
   });
   if(!r.ok){
     const e=await r.json().catch(()=>({}));
-    if(r.status===429)throw new Error('Rate limit (429). Aguarde e tente novamente.');
+    if(r.status===429)throw new Error('Rate limit (429). Aguarde alguns segundos e tente novamente.');
     throw new Error(e?.error?.message||`HTTP ${r.status}`);
   }
   const rdr=r.body.getReader(),dec=new TextDecoder();
@@ -287,12 +287,27 @@ async function gemStream(key,sys,user,onChunk,signal,temp=0.1,maxTok=8192){
     const{done,value}=await rdr.read();
     if(done)break;
     buf+=dec.decode(value,{stream:true});
-    const lines=buf.split('\n');buf=lines.pop();
+    const lines=buf.split('\n');buf=lines.pop()??'';
     for(const ln of lines){
       if(!ln.startsWith('data: '))continue;
       const d=ln.slice(6).trim();
-      if(d==='[DONE]')continue;
-      try{const j=JSON.parse(d);const t=j.candidates?.[0]?.content?.parts?.[0]?.text||'';if(t)onChunk(t);}catch{}
+      if(!d||d==='[DONE]')continue;
+      try{
+        const j=JSON.parse(d);
+        const t=j?.candidates?.[0]?.content?.parts?.[0]?.text||'';
+        if(t)onChunk(t);
+      }catch{/* ignore malformed SSE chunk */}
+    }
+  }
+  // flush remaining buffer
+  if(buf.startsWith('data: ')){
+    const d=buf.slice(6).trim();
+    if(d&&d!=='[DONE]'){
+      try{
+        const j=JSON.parse(d);
+        const t=j?.candidates?.[0]?.content?.parts?.[0]?.text||'';
+        if(t)onChunk(t);
+      }catch{}
     }
   }
 }
@@ -453,11 +468,46 @@ async function exportDocx(blocks,config){
    MODO ESCREVER — funções de geração de conteúdo
 ═══════════════════════════════════════════════════════ */
 
+/* ═══ ROBUST JSON PARSER ═══ */
+function parseJsonSafe(raw){
+  // Strip markdown fences
+  let s=raw.replace(/^```(?:json)?/,'').replace(/```\s*$/,'').trim();
+  // Try direct parse first
+  try{return JSON.parse(s);}catch(_){}
+  // Find first { ... } block (handles trailing garbage or preamble)
+  const start=s.indexOf('{');
+  const end=s.lastIndexOf('}');
+  if(start!==-1&&end!==-1&&end>start){
+    try{return JSON.parse(s.slice(start,end+1));}catch(_){}
+  }
+  // Last resort: attempt to close unclosed strings/braces
+  // Count open braces and try appending closing braces
+  let fixed=s.slice(start!==-1?start:0);
+  // Close any unterminated string: count unescaped quotes parity
+  let inStr=false,escaped=false,depth=0;
+  for(let i=0;i<fixed.length;i++){
+    const c=fixed[i];
+    if(escaped){escaped=false;continue;}
+    if(c==='\\'){escaped=true;continue;}
+    if(c==='"'){inStr=!inStr;continue;}
+    if(!inStr){if(c==='{')depth++;else if(c==='}')depth--;}
+  }
+  if(inStr)fixed+='"';
+  while(depth-->0)fixed+='}';
+  try{return JSON.parse(fixed);}catch(e){
+    throw new Error('JSON inválido do modelo: '+e.message);
+  }
+}
+
 /* Gera o outline completo do livro em JSON */
 async function generateOutline(apiKey,form,signal){
   const sys=`Você é um escritor editorial profissional especializado em livros de não-ficção e ficção para o mercado brasileiro.
 Sua tarefa é criar um outline detalhado para um livro completo.
-Responda APENAS com JSON válido, sem markdown, sem explicações, sem blocos de código.
+REGRAS CRÍTICAS:
+- Responda APENAS com JSON válido, sem markdown, sem blocos de código, sem explicações, sem texto antes ou depois do JSON.
+- NÃO use aspas duplas dentro de strings — use aspas simples ou reescreva a frase.
+- NÃO inclua quebras de linha dentro de valores de string — mantenha tudo em uma linha.
+- Mantenha "resumo" curto: no máximo 120 caracteres, sem pontuação especial.
 Formato exato:
 {
   "titulo": "string",
@@ -473,7 +523,7 @@ Formato exato:
         {
           "numero": 1,
           "titulo": "string",
-          "resumo": "string (2-3 frases do que será abordado)",
+          "resumo": "string (max 120 chars, sem aspas duplas)",
           "palavras_alvo": number
         }
       ]
@@ -495,9 +545,8 @@ Distribua os capítulos em partes temáticas coerentes.
 Cada capítulo deve ter palavras_alvo calculado para que o total chegue a aproximadamente ${form.paginas} páginas (considere 380 palavras por página).
 Seja específico nos resumos — cada resumo deve guiar a escrita com conteúdo real, não genérico.`;
 
-  const raw=await gemOnce(apiKey,sys,user,signal,0.7,4096);
-  const clean=raw.replace(/```json/g,'').replace(/```/g,'').trim();
-  return JSON.parse(clean);
+  const raw=await gemOnce(apiKey,sys,user,signal,0.7,6144);
+  return parseJsonSafe(raw);
 }
 
 /* Gera o HTML diagramado de um capítulo completo */
@@ -1079,13 +1128,26 @@ function App(){
     if(!needKey())return;
     if(abrt.current)abrt.current.abort();
     const ctrl=new AbortController();abrt.current=ctrl;
+    let lastErr=null;
     try{
       setLoading(true);setErr(null);
-      const ol=await generateOutline(apiKey,form,ctrl.signal);
+      let ol=null;
+      // Up to 2 attempts in case of malformed JSON on first try
+      for(let attempt=0;attempt<2;attempt++){
+        if(ctrl.signal.aborted)return;
+        try{
+          ol=await generateOutline(apiKey,form,ctrl.signal);
+          break;
+        }catch(e){
+          if(e.name==='AbortError')return;
+          lastErr=e;
+          if(attempt===0)await new Promise(r=>setTimeout(r,1200));
+        }
+      }
+      if(!ol)throw lastErr;
       setWriteForm(form);
       setOutline(ol);
       db.set('kdp-writeform',form);
-      // Atualiza cfg com título/autor do outline
       setCfg(c=>({...c,title:ol.titulo||form.titulo,author:ol.autor||form.autor}));
       setShowOutline(true);
     }catch(e){
