@@ -1,1054 +1,608 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
 <title>KDP Diagramador IA</title>
-
-<!-- Mammoth.js para parsear DOCX -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
-<!-- FileSaver.js -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
-<!-- docx.js para exportar DOCX -->
 <script src="https://unpkg.com/docx@8.2.2/build/index.js"></script>
-<!-- idb-keyval para persistência -->
 <script type="module">
-  import { get, set, del } from 'https://unpkg.com/idb-keyval@6/dist/index.js';
-  window.idbGet = get; window.idbSet = set; window.idbDel = del;
+  import{get,set}from'https://unpkg.com/idb-keyval@6/dist/index.js';
+  window._idbGet=get;window._idbSet=set;
 </script>
-<!-- React + Babel -->
 <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400&family=EB+Garamond:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
 
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700;900&family=Source+Sans+3:ital,wght@0,300;0,400;0,600;1,400&display=swap');
-
-  :root {
-    --ink: #1a1a2e;
-    --ink-light: #4a4a6a;
-    --paper: #faf9f7;
-    --paper-dark: #f0ede8;
-    --accent: #c9884e;
-    --accent-dark: #a8693a;
-    --teal: #2d7d7d;
-    --teal-light: #e8f5f5;
-    --border: #e2ddd6;
-    --white: #ffffff;
-    --shadow: 0 4px 24px rgba(26,26,46,0.10);
-    --shadow-lg: 0 12px 48px rgba(26,26,46,0.18);
-  }
-
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-
-  body {
-    font-family: 'Source Sans 3', sans-serif;
-    background: var(--paper);
-    color: var(--ink);
-    height: 100vh;
-    overflow: hidden;
-    display: flex;
-    flex-direction: column;
-  }
-
-  #root { display: flex; flex-direction: column; height: 100vh; }
-
-  /* ===== SIDEBAR ===== */
-  .sidebar {
-    width: 300px;
-    background: var(--white);
-    border-right: 1px solid var(--border);
-    height: 100vh;
-    overflow-y: auto;
-    flex-shrink: 0;
-    display: flex;
-    flex-direction: column;
-    position: relative;
-    z-index: 10;
-  }
-
-  .sidebar-header {
-    padding: 20px 22px 16px;
-    border-bottom: 1px solid var(--border);
-    position: sticky;
-    top: 0;
-    background: var(--white);
-    z-index: 5;
-  }
-
-  .sidebar-logo {
-    font-family: 'Playfair Display', serif;
-    font-size: 18px;
-    font-weight: 900;
-    color: var(--ink);
-    letter-spacing: -0.5px;
-    line-height: 1.2;
-  }
-
-  .sidebar-logo span { color: var(--accent); }
-
-  .sidebar-body { padding: 16px 16px 24px; flex: 1; display: flex; flex-direction: column; gap: 16px; }
-
-  /* ===== AI PANEL ===== */
-  .ai-panel {
-    background: linear-gradient(135deg, #e8f5f5 0%, #d4eeee 100%);
-    border: 1px solid #b2dada;
-    border-radius: 12px;
-    padding: 14px;
-    position: relative;
-    overflow: hidden;
-  }
-
-  .ai-panel::before {
-    content: '✦';
-    position: absolute;
-    top: 8px; right: 10px;
-    font-size: 40px;
-    color: var(--teal);
-    opacity: 0.08;
-    pointer-events: none;
-  }
-
-  .ai-panel-title {
-    font-family: 'Playfair Display', serif;
-    font-size: 14px;
-    font-weight: 700;
-    color: var(--teal);
-    margin-bottom: 6px;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-  }
-
-  .ai-panel textarea {
-    width: 100%;
-    border: 1px solid #b2dada;
-    border-radius: 8px;
-    padding: 8px 10px;
-    font-family: 'Source Sans 3', sans-serif;
-    font-size: 12px;
-    color: var(--ink);
-    background: var(--white);
-    resize: vertical;
-    min-height: 80px;
-    outline: none;
-    transition: border-color 0.2s;
-    margin-bottom: 8px;
-  }
-
-  .ai-panel textarea:focus { border-color: var(--teal); }
-
-  /* ===== BUTTONS ===== */
-  .btn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
-    width: 100%;
-    padding: 9px 14px;
-    border-radius: 8px;
-    font-family: 'Source Sans 3', sans-serif;
-    font-size: 13px;
-    font-weight: 600;
-    cursor: pointer;
-    border: none;
-    transition: all 0.15s;
-    letter-spacing: 0.01em;
-  }
-
-  .btn:disabled { opacity: 0.45; cursor: not-allowed; }
-
-  .btn-primary {
-    background: var(--teal);
-    color: var(--white);
-  }
-  .btn-primary:hover:not(:disabled) { background: #256868; transform: translateY(-1px); }
-
-  .btn-secondary {
-    background: var(--ink);
-    color: var(--white);
-  }
-  .btn-secondary:hover:not(:disabled) { background: #2d2d50; transform: translateY(-1px); }
-
-  .btn-outline {
-    background: var(--white);
-    color: var(--ink);
-    border: 1px solid var(--border);
-  }
-  .btn-outline:hover:not(:disabled) { background: var(--paper); }
-
-  .btn-danger {
-    background: #dc2626;
-    color: var(--white);
-  }
-  .btn-danger:hover:not(:disabled) { background: #b91c1c; }
-
-  /* ===== SETTINGS SECTION ===== */
-  .settings-section {
-    background: var(--paper);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 12px;
-  }
-
-  .settings-section-title {
-    font-size: 11px;
-    font-weight: 700;
-    color: var(--ink-light);
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    margin-bottom: 10px;
-  }
-
-  .field-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 8px;
-    gap: 8px;
-  }
-
-  .field-label {
-    font-size: 12px;
-    color: var(--ink);
-    flex-shrink: 0;
-    min-width: 80px;
-  }
-
-  .field-input {
-    flex: 1;
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 4px 8px;
-    font-size: 12px;
-    font-family: 'Source Sans 3', sans-serif;
-    color: var(--ink);
-    background: var(--white);
-    outline: none;
-    transition: border-color 0.15s;
-  }
-
-  .field-input:focus { border-color: var(--teal); }
-
-  select.field-input { cursor: pointer; }
-
-  .toggle-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 6px;
-  }
-
-  .toggle {
-    width: 32px;
-    height: 18px;
-    background: var(--border);
-    border-radius: 9px;
-    position: relative;
-    cursor: pointer;
-    transition: background 0.2s;
-    border: none;
-    outline: none;
-    flex-shrink: 0;
-  }
-
-  .toggle.on { background: var(--teal); }
-
-  .toggle::after {
-    content: '';
-    position: absolute;
-    width: 14px;
-    height: 14px;
-    background: white;
-    border-radius: 50%;
-    top: 2px;
-    left: 2px;
-    transition: left 0.2s;
-  }
-
-  .toggle.on::after { left: 16px; }
-
-  /* ===== MAIN LAYOUT ===== */
-  .app-layout {
-    display: flex;
-    height: 100vh;
-    overflow: hidden;
-  }
-
-  /* ===== PREVIEW ===== */
-  .preview-area {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    background: #d8d3cc;
-    overflow: hidden;
-    position: relative;
-  }
-
-  .preview-toolbar {
-    height: 48px;
-    background: var(--white);
-    border-bottom: 1px solid var(--border);
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0 20px;
-    z-index: 5;
-    flex-shrink: 0;
-  }
-
-  .preview-toolbar-title {
-    font-family: 'Playfair Display', serif;
-    font-size: 14px;
-    font-weight: 700;
-    color: var(--ink-light);
-    letter-spacing: 0.01em;
-  }
-
-  .preview-pages {
-    flex: 1;
-    overflow-y: auto;
-    padding: 32px 24px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 20px;
-  }
-
-  .page-wrapper {
-    background: white;
-    box-shadow: var(--shadow-lg);
-    border: 1px solid #d8d3cc;
-  }
-
-  /* ===== UPLOAD SCREEN ===== */
-  .upload-screen {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    background: var(--paper);
-    padding: 40px;
-  }
-
-  .upload-hero {
-    text-align: center;
-    margin-bottom: 40px;
-  }
-
-  .upload-hero h1 {
-    font-family: 'Playfair Display', serif;
-    font-size: 48px;
-    font-weight: 900;
-    color: var(--ink);
-    letter-spacing: -2px;
-    line-height: 1;
-    margin-bottom: 12px;
-  }
-
-  .upload-hero h1 em {
-    color: var(--accent);
-    font-style: italic;
-  }
-
-  .upload-hero p {
-    font-size: 16px;
-    color: var(--ink-light);
-    max-width: 420px;
-    margin: 0 auto;
-    line-height: 1.5;
-  }
-
-  .dropzone {
-    width: 100%;
-    max-width: 480px;
-    background: var(--white);
-    border: 2px dashed var(--border);
-    border-radius: 20px;
-    padding: 48px 32px;
-    text-align: center;
-    cursor: pointer;
-    transition: all 0.2s;
-    position: relative;
-  }
-
-  .dropzone:hover, .dropzone.drag-over {
-    border-color: var(--accent);
-    background: #fdf8f4;
-    transform: translateY(-2px);
-    box-shadow: var(--shadow);
-  }
-
-  .dropzone input[type=file] {
-    position: absolute; inset: 0; width: 100%; height: 100%;
-    opacity: 0; cursor: pointer;
-  }
-
-  .dropzone-icon {
-    font-size: 56px;
-    margin-bottom: 16px;
-    line-height: 1;
-  }
-
-  .dropzone h3 {
-    font-family: 'Playfair Display', serif;
-    font-size: 20px;
-    font-weight: 700;
-    color: var(--ink);
-    margin-bottom: 6px;
-  }
-
-  .dropzone p {
-    font-size: 13px;
-    color: var(--ink-light);
-    margin-bottom: 20px;
-  }
-
-  .dropzone .choose-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    background: var(--ink);
-    color: white;
-    font-family: 'Source Sans 3', sans-serif;
-    font-weight: 600;
-    font-size: 14px;
-    padding: 10px 22px;
-    border-radius: 10px;
-    border: none;
-    cursor: pointer;
-    pointer-events: none;
-    transition: background 0.15s;
-  }
-
-  /* ===== MODAL ===== */
-  .modal-overlay {
-    position: fixed; inset: 0;
-    background: rgba(26,26,46,0.6);
-    backdrop-filter: blur(4px);
-    z-index: 200;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 16px;
-  }
-
-  .modal {
-    background: var(--white);
-    border-radius: 16px;
-    padding: 28px;
-    max-width: 440px;
-    width: 100%;
-    position: relative;
-    box-shadow: var(--shadow-lg);
-  }
-
-  .modal h3 {
-    font-family: 'Playfair Display', serif;
-    font-size: 20px;
-    font-weight: 700;
-    color: var(--ink);
-    margin-bottom: 12px;
-  }
-
-  .modal p { font-size: 14px; color: var(--ink-light); margin-bottom: 10px; line-height: 1.5; }
-
-  .modal-close {
-    position: absolute;
-    top: 14px; right: 14px;
-    width: 28px; height: 28px;
-    background: none;
-    border: none;
-    cursor: pointer;
-    font-size: 18px;
-    color: var(--ink-light);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 50%;
-    transition: background 0.15s;
-  }
-
-  .modal-close:hover { background: var(--paper); }
-
-  .modal input[type=password], .modal input[type=text] {
-    width: 100%;
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 9px 12px;
-    font-family: 'Source Sans 3', sans-serif;
-    font-size: 14px;
-    color: var(--ink);
-    background: var(--paper);
-    outline: none;
-    transition: border-color 0.15s;
-    margin-bottom: 8px;
-  }
-
-  .modal input:focus { border-color: var(--teal); background: var(--white); }
-
-  .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
-
-  /* ===== PROGRESS BAR ===== */
-  .progress-bar-wrap { background: #e2ddd6; border-radius: 99px; height: 6px; overflow: hidden; margin-top: 6px; }
-  .progress-bar-fill { height: 100%; background: var(--teal); border-radius: 99px; transition: width 0.4s; }
-
-  /* ===== LOADING TOAST ===== */
-  .loading-toast {
-    position: fixed;
-    bottom: 24px; right: 24px;
-    background: var(--ink);
-    color: white;
-    padding: 12px 20px;
-    border-radius: 40px;
-    font-size: 13px;
-    font-weight: 600;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    box-shadow: var(--shadow-lg);
-    z-index: 100;
-    animation: toast-in 0.3s ease;
-  }
-
-  @keyframes toast-in {
-    from { transform: translateY(20px); opacity: 0; }
-    to { transform: translateY(0); opacity: 1; }
-  }
-
-  .spinner {
-    width: 16px; height: 16px;
-    border: 2px solid rgba(255,255,255,0.3);
-    border-top-color: white;
-    border-radius: 50%;
-    animation: spin 0.7s linear infinite;
-  }
-
-  @keyframes spin { to { transform: rotate(360deg); } }
-
-  /* ===== EMPTY STATE ===== */
-  .empty-preview {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    height: 100%;
-    text-align: center;
-    padding: 40px;
-    color: var(--ink-light);
-  }
-
-  .empty-preview .book-icon {
-    font-size: 64px;
-    margin-bottom: 20px;
-    animation: float 3s ease-in-out infinite;
-  }
-
-  @keyframes float {
-    0%, 100% { transform: translateY(0); }
-    50% { transform: translateY(-8px); }
-  }
-
-  .empty-preview h3 {
-    font-family: 'Playfair Display', serif;
-    font-size: 20px;
-    font-weight: 700;
-    color: var(--ink);
-    margin-bottom: 8px;
-  }
-
-  .empty-preview p { font-size: 14px; max-width: 300px; line-height: 1.5; }
-
-  /* ===== ERROR BOX ===== */
-  .error-icon-wrap {
-    width: 48px; height: 48px;
-    background: #fee2e2;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 22px;
-    margin: 0 auto 12px;
-  }
-
-  /* ===== DIVIDER ===== */
-  .divider { height: 1px; background: var(--border); margin: 4px 0; }
-
-  /* ===== PRINT ===== */
-  @media print {
-    .sidebar, .preview-toolbar, .loading-toast, .modal-overlay { display: none !important; }
-    body, html { height: auto; overflow: visible; }
-    .app-layout { display: block; }
-    .preview-area { background: white; overflow: visible; }
-    .preview-pages { padding: 0; overflow: visible; display: block; }
-    .page-wrapper { box-shadow: none !important; border: none !important; margin: 0 !important; page-break-after: always; }
-  }
-
-  /* Badge */
-  .badge {
-    display: inline-flex;
-    align-items: center;
-    background: var(--accent);
-    color: white;
-    font-size: 10px;
-    font-weight: 700;
-    padding: 2px 7px;
-    border-radius: 99px;
-    letter-spacing: 0.05em;
-    text-transform: uppercase;
-    margin-left: 6px;
-  }
-
-  .info-text { font-size: 11px; color: var(--ink-light); line-height: 1.4; margin-top: 4px; }
+/* ═══════════════════════════════════════════════
+   APP SHELL
+═══════════════════════════════════════════════ */
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:system-ui,sans-serif;background:#e8e4df;height:100vh;overflow:hidden}
+#root{height:100vh;display:flex;flex-direction:column}
+.app{display:flex;height:100vh;overflow:hidden}
+
+/* ═══════════════════════════════════════════════
+   SIDEBAR
+═══════════════════════════════════════════════ */
+.sb{width:272px;background:#1c1c1e;color:#f5f5f0;display:flex;flex-direction:column;flex-shrink:0;height:100vh;overflow:hidden}
+.sb-head{padding:18px 16px 14px;border-bottom:1px solid #333}
+.sb-logo{font-family:'Playfair Display',serif;font-size:17px;font-weight:900;letter-spacing:-0.3px;color:#f5f5f0}
+.sb-logo em{color:#c9884e;font-style:normal}
+.sb-newfile{font-size:11px;color:#888;background:none;border:none;cursor:pointer;margin-top:5px;padding:0;text-decoration:underline;display:block}
+.sb-newfile:hover{color:#c9884e}
+.sb-body{flex:1;overflow-y:auto;padding:12px}
+.sb-body::-webkit-scrollbar{width:4px}
+.sb-body::-webkit-scrollbar-thumb{background:#444;border-radius:2px}
+
+/* sections */
+.sec{margin-bottom:12px;background:#262628;border-radius:8px;overflow:hidden}
+.sec-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#888;padding:10px 12px 6px}
+.sec-body{padding:0 12px 12px;display:flex;flex-direction:column;gap:6px}
+
+/* field */
+.f-row{display:flex;align-items:center;gap:8px}
+.f-label{font-size:11px;color:#aaa;width:72px;flex-shrink:0}
+.f-input{flex:1;background:#1c1c1e;border:1px solid #3a3a3c;border-radius:5px;padding:4px 8px;font-size:12px;color:#f5f5f0;outline:none;font-family:inherit}
+.f-input:focus{border-color:#c9884e}
+select.f-input{cursor:pointer}
+
+/* toggle */
+.tog-row{display:flex;align-items:center;justify-content:space-between}
+.tog-label{font-size:11px;color:#aaa}
+.tog{width:30px;height:17px;background:#3a3a3c;border-radius:9px;position:relative;cursor:pointer;border:none;transition:background .2s;flex-shrink:0}
+.tog.on{background:#c9884e}
+.tog::after{content:'';position:absolute;width:13px;height:13px;background:#fff;border-radius:50%;top:2px;left:2px;transition:left .18s}
+.tog.on::after{left:15px}
+
+/* buttons */
+.btn{display:flex;align-items:center;justify-content:center;gap:5px;width:100%;padding:8px 12px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;border:none;transition:all .15s;font-family:inherit;letter-spacing:0.01em}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.btn-gold{background:#c9884e;color:#fff}
+.btn-gold:hover:not(:disabled){background:#b8773f}
+.btn-dark{background:#3a3a3c;color:#f5f5f0}
+.btn-dark:hover:not(:disabled){background:#4a4a4c}
+.btn-ghost{background:transparent;color:#aaa;border:1px solid #3a3a3c}
+.btn-ghost:hover:not(:disabled){background:#262628;color:#f5f5f0}
+.btn-red{background:#7f1d1d;color:#fca5a5}
+.btn-red:hover:not(:disabled){background:#991b1b}
+
+/* progress */
+.prog-wrap{background:#3a3a3c;border-radius:99px;height:4px;overflow:hidden;margin-top:2px}
+.prog-fill{height:100%;background:#c9884e;border-radius:99px;transition:width .4s}
+.prog-label{display:flex;justify-content:space-between;font-size:10px;color:#888;margin-bottom:3px}
+
+/* ai textarea */
+.ai-ta{width:100%;background:#1c1c1e;border:1px solid #3a3a3c;border-radius:6px;padding:8px 10px;font-size:12px;color:#f5f5f0;font-family:inherit;resize:vertical;min-height:72px;outline:none;line-height:1.5}
+.ai-ta:focus{border-color:#c9884e}
+.ai-ta::placeholder{color:#555}
+
+/* divider */
+.div{height:1px;background:#333;margin:4px 0}
+
+/* ═══════════════════════════════════════════════
+   PREVIEW AREA
+═══════════════════════════════════════════════ */
+.pv{flex:1;display:flex;flex-direction:column;background:#d6d1cb;overflow:hidden}
+.pv-bar{height:44px;background:#fff;border-bottom:1px solid #ddd;display:flex;align-items:center;justify-content:space-between;padding:0 18px;flex-shrink:0;z-index:5}
+.pv-bar-title{font-size:13px;font-weight:600;color:#666;font-family:'Playfair Display',serif}
+.pv-scroll{flex:1;overflow-y:auto;padding:28px 20px;display:flex;flex-direction:column;align-items:center;gap:16px}
+.pv-scroll::-webkit-scrollbar{width:6px}
+.pv-scroll::-webkit-scrollbar-thumb{background:#bbb;border-radius:3px}
+
+/* ═══════════════════════════════════════════════
+   BOOK PAGE — O CSS QUE SUBSTITUI TOKENS DA IA
+   Tudo que é "padrão" está aqui. Zero tokens gastos.
+═══════════════════════════════════════════════ */
+
+/* Wrapper de página no preview */
+.pg-wrap{background:#fff;box-shadow:0 4px 24px rgba(0,0,0,.18);flex-shrink:0}
+
+/* A tag <page> gerada pela IA — dimensões em px = 6×9" @ 96dpi */
+page{
+  display:block;
+  width:576px;           /* 6in × 96 */
+  min-height:864px;      /* 9in × 96 */
+  padding:77px 58px 77px 72px; /* 0.8in top/bot, 0.6in right, 0.75in left (gutter) */
+  position:relative;
+  background:#fff;
+  color:#111;
+  overflow:hidden;
+  font-family:'EB Garamond',Georgia,serif;
+  font-size:11.5pt;
+  line-height:1.55;
+  box-sizing:border-box;
+}
+
+/* Elementos tipográficos — CSS puro, zero tokens */
+page p{
+  text-align:justify;
+  text-indent:1.8em;
+  margin:0;
+  orphans:3;
+  widows:3;
+  hyphens:auto;
+}
+page p.no-indent{text-indent:0}
+page p.center{text-align:center;text-indent:0}
+page p.ornament{text-align:center;text-indent:0;color:#888;letter-spacing:.2em;font-size:10pt;margin:10px 0}
+
+/* Capítulo — página própria */
+page.chapter-page{padding-top:140px}
+page h1{
+  font-family:'Playfair Display',serif;
+  font-size:22pt;
+  font-weight:900;
+  text-align:center;
+  margin:0 0 6px 0;
+  letter-spacing:-0.5px;
+  line-height:1.15;
+  color:#1a1a1a;
+}
+page .chapter-num{
+  font-family:'EB Garamond',serif;
+  font-size:10pt;
+  text-align:center;
+  letter-spacing:.25em;
+  text-transform:uppercase;
+  color:#999;
+  margin-bottom:18px;
+}
+page .chapter-rule{
+  width:36px;height:1.5px;background:#c9884e;
+  margin:18px auto 32px;
+  display:block;
+}
+page h2{
+  font-family:'Playfair Display',serif;
+  font-size:13pt;
+  font-weight:700;
+  text-align:center;
+  margin:28px 0 10px;
+  color:#1a1a1a;
+}
+page h3{
+  font-family:'EB Garamond',serif;
+  font-size:11pt;
+  font-weight:500;
+  font-style:italic;
+  text-align:center;
+  margin:20px 0 8px;
+  color:#555;
+}
+
+/* Citações epígrafe */
+page blockquote{
+  margin:24px 24px 24px 28px;
+  font-style:italic;
+  color:#444;
+  font-size:10.5pt;
+  line-height:1.6;
+  border-left:2px solid #c9884e;
+  padding-left:14px;
+  text-indent:0;
+}
+page blockquote cite{
+  display:block;
+  font-style:normal;
+  font-size:9.5pt;
+  color:#888;
+  margin-top:6px;
+  text-align:right;
+}
+page .epigraph{
+  margin:32px 40px 40px;
+  font-style:italic;
+  color:#555;
+  font-size:10pt;
+  line-height:1.65;
+  text-align:center;
+  text-indent:0;
+}
+page .epigraph cite{
+  display:block;
+  font-style:normal;
+  font-size:9pt;
+  color:#888;
+  margin-top:8px;
+}
+
+/* Drop cap */
+page p.dropcap::first-letter{
+  font-family:'Playfair Display',serif;
+  font-size:3.8em;
+  font-weight:900;
+  float:left;
+  line-height:.78;
+  margin-right:.06em;
+  margin-top:.04em;
+  color:#1a1a1a;
+}
+
+/* Número de página */
+page .pgnum{
+  position:absolute;
+  bottom:32px;left:0;right:0;
+  text-align:center;
+  font-size:9pt;
+  color:#999;
+  font-family:'EB Garamond',serif;
+  letter-spacing:.05em;
+}
+page.even .pgnum{text-align:left;left:58px}
+page.odd  .pgnum{text-align:right;right:58px}
+
+/* Running head */
+page .runhead{
+  position:absolute;
+  top:26px;left:0;right:0;
+  text-align:center;
+  font-size:8.5pt;
+  color:#bbb;
+  font-family:'EB Garamond',serif;
+  font-style:italic;
+  letter-spacing:.04em;
+}
+page.chapter-page .runhead{display:none}
+
+/* Sumário */
+page .toc-entry{
+  display:flex;
+  justify-content:space-between;
+  align-items:baseline;
+  font-size:10.5pt;
+  margin-bottom:6px;
+  text-indent:0;
+}
+page .toc-entry .toc-dots{flex:1;border-bottom:1px dotted #ccc;margin:0 6px;position:relative;top:-3px}
+page .toc-entry.toc-part{font-weight:700;font-family:'Playfair Display',serif;margin-top:14px;font-size:11pt}
+page .toc-entry.toc-cap{padding-left:14px;color:#444}
+
+/* Página especial (título, copyright) */
+page.title-page{padding-top:160px;text-align:center}
+page.title-page h1{font-size:30pt;margin-bottom:8px}
+page.title-page .subtitle{font-style:italic;color:#666;font-size:12pt;margin-bottom:48px}
+page.title-page .author{font-family:'Playfair Display',serif;font-size:14pt;font-weight:700;color:#333}
+page.copyright-page{padding-top:200px;font-size:9pt;color:#666;line-height:1.8}
+page.copyright-page p{text-indent:0;text-align:center}
+
+/* ═══════════════════════════════════════════════
+   UPLOAD SCREEN
+═══════════════════════════════════════════════ */
+.up-screen{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#f5f2ee;padding:40px}
+.up-hero{text-align:center;margin-bottom:36px}
+.up-hero h1{font-family:'Playfair Display',serif;font-size:44px;font-weight:900;color:#1c1c1e;letter-spacing:-2px;line-height:1;margin-bottom:10px}
+.up-hero h1 em{color:#c9884e;font-style:italic}
+.up-hero p{font-size:15px;color:#666;max-width:400px;margin:0 auto;line-height:1.5}
+.dropzone{width:100%;max-width:460px;background:#fff;border:2px dashed #ddd;border-radius:16px;padding:44px 28px;text-align:center;cursor:pointer;transition:all .2s;position:relative}
+.dropzone:hover,.dropzone.drag{border-color:#c9884e;background:#fdf9f5;transform:translateY(-2px);box-shadow:0 8px 32px rgba(201,136,78,.12)}
+.dropzone input{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer}
+.dz-icon{font-size:52px;margin-bottom:12px}
+.dz-title{font-family:'Playfair Display',serif;font-size:18px;font-weight:700;color:#1c1c1e;margin-bottom:6px}
+.dz-sub{font-size:13px;color:#999;margin-bottom:18px}
+.dz-btn{display:inline-flex;align-items:center;gap:6px;background:#1c1c1e;color:#fff;font-size:13px;font-weight:600;padding:9px 20px;border-radius:8px;border:none;pointer-events:none}
+.up-note{font-size:11px;color:#999;margin-top:14px;text-align:center;line-height:1.6}
+.up-note a{color:#c9884e}
+
+/* ═══════════════════════════════════════════════
+   MODALS
+═══════════════════════════════════════════════ */
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);backdrop-filter:blur(4px);z-index:200;display:flex;align-items:center;justify-content:center;padding:16px}
+.modal{background:#fff;border-radius:14px;padding:26px;max-width:420px;width:100%;position:relative;box-shadow:0 20px 60px rgba(0,0,0,.25)}
+.modal h3{font-family:'Playfair Display',serif;font-size:19px;font-weight:700;color:#1c1c1e;margin-bottom:10px}
+.modal p{font-size:13px;color:#666;margin-bottom:8px;line-height:1.5}
+.modal-x{position:absolute;top:12px;right:12px;width:26px;height:26px;background:none;border:none;cursor:pointer;font-size:16px;color:#999;display:flex;align-items:center;justify-content:center;border-radius:50%}
+.modal-x:hover{background:#f5f5f5}
+.modal input{width:100%;border:1px solid #ddd;border-radius:7px;padding:8px 11px;font-size:13px;color:#1c1c1e;background:#fafafa;outline:none;margin-bottom:8px;font-family:inherit}
+.modal input:focus{border-color:#c9884e}
+.modal-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:14px}
+.modal-actions .btn{width:auto;padding:7px 16px}
+.link{color:#c9884e;text-decoration:none;font-size:12px}
+.link:hover{text-decoration:underline}
+.err-icon{width:44px;height:44px;background:#fee2e2;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:20px;margin:0 auto 10px}
+
+/* toast */
+.toast{position:fixed;bottom:20px;right:20px;background:#1c1c1e;color:#f5f5f0;padding:10px 18px;border-radius:40px;font-size:12px;font-weight:600;display:flex;align-items:center;gap:9px;box-shadow:0 8px 32px rgba(0,0,0,.3);z-index:100;animation:tin .25s ease}
+@keyframes tin{from{transform:translateY(16px);opacity:0}to{transform:translateY(0);opacity:1}}
+
+/* spinner */
+.spin{width:14px;height:14px;border:2px solid rgba(255,255,255,.25);border-top-color:#fff;border-radius:50%;animation:s .65s linear infinite}
+@keyframes s{to{transform:rotate(360deg)}}
+.spin-dark{border-color:rgba(201,136,78,.25);border-top-color:#c9884e}
+
+/* empty */
+.empty{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;text-align:center;padding:40px;color:#888}
+.empty-icon{font-size:56px;margin-bottom:16px;animation:fl 3s ease-in-out infinite}
+@keyframes fl{0%,100%{transform:translateY(0)}50%{transform:translateY(-7px)}}
+.empty h3{font-family:'Playfair Display',serif;font-size:18px;font-weight:700;color:#555;margin-bottom:8px}
+.empty p{font-size:13px;line-height:1.5;max-width:280px}
+
+/* loading overlay */
+.load-overlay{position:fixed;inset:0;background:rgba(255,255,255,.85);z-index:300;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(3px)}
+
+/* ═══════════════════════════════════════════════
+   PRINT
+═══════════════════════════════════════════════ */
+@media print{
+  .sb,.pv-bar,.toast,.overlay,.load-overlay{display:none!important}
+  body,html{height:auto;overflow:visible;background:#fff}
+  .app{display:block}
+  .pv{background:#fff;overflow:visible;height:auto}
+  .pv-scroll{padding:0;overflow:visible;display:block;background:#fff;gap:0}
+  .pg-wrap{box-shadow:none!important;break-after:page;margin:0!important}
+  page{width:6in;min-height:9in;padding:.8in .6in .8in .75in}
+  page p{-webkit-hyphens:auto;hyphens:auto}
+}
 </style>
 </head>
 <body>
 <div id="root"></div>
 
-<script type="text/babel" data-type="module">
-const { useState, useRef, useEffect, useMemo, useCallback } = React;
+<script type="text/babel">
+const {useState,useRef,useEffect,useMemo,useCallback}=React;
 
-// ─────────────── CONSTANTS ───────────────
-const TRIM_SIZES = {
-  '5x8':     { name: '5" × 8"',         w: 5,    h: 8    },
-  '5.5x8.5': { name: '5.5" × 8.5"',     w: 5.5,  h: 8.5  },
-  '6x9':     { name: '6" × 9"',          w: 6,    h: 9    },
-  'A4':      { name: 'A4 (8.27" × 11.69")', w: 8.27, h: 11.69 },
+/* ═══ CONSTANTS ═══ */
+const TRIM={
+  '6x9':{name:'6" × 9" (KDP padrão)',w:6,h:9},
+  '5.5x8.5':{name:'5.5" × 8.5"',w:5.5,h:8.5},
+  '5x8':{name:'5" × 8"',w:5,h:8},
+  'A4':{name:'A4 (21×29.7cm)',w:8.27,h:11.69},
 };
 
-const DEFAULT_CONFIG = {
-  trimSize: '6x9',
-  fontFamily: 'Georgia, serif',
-  fontSize: 11,
-  lineHeight: 1.5,
-  marginTop: 0.8,
-  marginBottom: 0.8,
-  marginLeft: 0.6,
-  marginRight: 0.6,
-  gutter: 0.15,
-  title: '',
-  author: '',
-  dropCaps: true,
-  firstLineIndent: 0.25,
-  addTitlePage: false,
-  addCopyrightPage: false,
-  addTableOfContents: false,
+const DEF={
+  trimSize:'6x9',fontFamily:'EB Garamond',
+  title:'',author:'',
+  dropCaps:true,addTitlePage:false,addCopyrightPage:false,
 };
 
-// ─────────────── GEMINI API ───────────────
-const GEMINI_MODEL = 'gemini-2.5-flash';
-const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta';
+/* ═══ IDB ═══ */
+const db={
+  get:async k=>{try{return window._idbGet?await window._idbGet(k):null}catch{return null}},
+  set:async(k,v)=>{try{if(window._idbSet)await window._idbSet(k,v)}catch{}},
+};
 
-async function geminiStream(apiKey, systemPrompt, userText, onChunk, signal) {
-  const url = `${GEMINI_BASE}/models/${GEMINI_MODEL}:streamGenerateContent?alt=sse&key=${apiKey}`;
-  const body = {
-    system_instruction: { parts: [{ text: systemPrompt }] },
-    contents: [{ role: 'user', parts: [{ text: userText }] }],
-    generationConfig: { temperature: 0.3 },
-  };
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
+/* ═══ GEMINI ═══ */
+const MODEL='gemini-2.5-flash';
+const BASE='https://generativelanguage.googleapis.com/v1beta';
+
+async function gemStream(key,sys,user,onChunk,signal){
+  const r=await fetch(`${BASE}/models/${MODEL}:streamGenerateContent?alt=sse&key=${key}`,{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({
+      system_instruction:{parts:[{text:sys}]},
+      contents:[{role:'user',parts:[{text:user}]}],
+      generationConfig:{temperature:0.1,maxOutputTokens:8192},
+    }),
     signal,
   });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    if (res.status === 429) throw new Error('Limite de requisições (429). Aguarde e clique em Continuar.');
-    throw new Error(err?.error?.message || `Erro HTTP ${res.status}`);
+  if(!r.ok){
+    const e=await r.json().catch(()=>({}));
+    if(r.status===429)throw new Error('Rate limit (429). Aguarde e clique em Continuar.');
+    throw new Error(e?.error?.message||`HTTP ${r.status}`);
   }
-  const reader = res.body.getReader();
-  const dec = new TextDecoder();
-  let buf = '';
-  while (true) {
-    if (signal?.aborted) { reader.cancel(); return; }
-    const { done, value } = await reader.read();
-    if (done) break;
-    buf += dec.decode(value, { stream: true });
-    const lines = buf.split('\n');
-    buf = lines.pop();
-    for (const line of lines) {
-      if (!line.startsWith('data: ')) continue;
-      const data = line.slice(6).trim();
-      if (data === '[DONE]') continue;
-      try {
-        const json = JSON.parse(data);
-        const text = json.candidates?.[0]?.content?.parts?.[0]?.text || '';
-        if (text) onChunk(text);
-      } catch {}
+  const rdr=r.body.getReader(),dec=new TextDecoder();
+  let buf='';
+  while(true){
+    if(signal?.aborted){rdr.cancel();return;}
+    const{done,value}=await rdr.read();
+    if(done)break;
+    buf+=dec.decode(value,{stream:true});
+    const lines=buf.split('\n');buf=lines.pop();
+    for(const ln of lines){
+      if(!ln.startsWith('data: '))continue;
+      const d=ln.slice(6).trim();
+      if(d==='[DONE]')continue;
+      try{const j=JSON.parse(d);const t=j.candidates?.[0]?.content?.parts?.[0]?.text||'';if(t)onChunk(t);}catch{}
     }
   }
 }
 
-async function geminiGenerate(apiKey, systemPrompt, userText, signal) {
-  const url = `${GEMINI_BASE}/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`;
-  const body = {
-    system_instruction: { parts: [{ text: systemPrompt }] },
-    contents: [{ role: 'user', parts: [{ text: userText }] }],
-    generationConfig: { temperature: 0.2 },
-  };
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-    signal,
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    if (res.status === 429) throw new Error('Limite de requisições (429). Aguarde e tente novamente.');
-    throw new Error(err?.error?.message || `Erro HTTP ${res.status}`);
-  }
-  const json = await res.json();
-  return json.candidates?.[0]?.content?.parts?.[0]?.text || '';
+/* ═══ SYSTEM PROMPT — ULTRA-ENXUTO ═══
+   A IA só precisa saber QUAIS TAGS usar.
+   TODO o visual já está no CSS acima.
+   Isso reduz o output de tokens em ~85%.
+═══ */
+function buildSys(startPage,bookTitle,userStyle){
+  return `Você é um paginador editorial. Divida o texto em páginas usando APENAS estas tags — o CSS já está pronto no documento, não crie style= em nada.
+
+ESTRUTURA DE PÁGINA:
+<page>[conteúdo]<span class="pgnum">N</span></page>
+
+REGRAS DE PREENCHIMENTO:
+- Cada página comporta ~380-420 palavras de corpo de texto.
+- Preencha até o limite antes de abrir nova <page>.
+- Nunca quebre um parágrafo em duas páginas se couber na atual.
+- Capítulos SEMPRE começam em nova página com class="chapter-page".
+
+TAGS DISPONÍVEIS (e quando usar cada uma):
+<page>               → página normal de conteúdo
+<page class="chapter-page">  → primeira página de capítulo
+<page class="title-page">    → página de título (se presente)
+<page class="copyright-page"> → página de direitos (se presente)
+<page class="odd">/<page class="even"> → opcional, para running head lateral
+
+DENTRO DE PÁGINAS:
+<span class="runhead">${bookTitle||'texto'}</span>  → cabeçalho corrente (em toda página não-capítulo)
+<span class="chapter-num">CAPÍTULO 1</span>   → numeração acima do título
+<h1>Título do Capítulo</h1>
+<span class="chapter-rule"></span>            → ornamento dourado após h1
+<h2>Subtítulo de seção</h2>
+<h3>Sub-subtítulo</h3>
+<p class="dropcap">Primeiro parágrafo com drop cap...</p>
+<p>Parágrafo normal (recuo automático)...</p>
+<p class="no-indent">Sem recuo (após título/citação)</p>
+<p class="ornament">✦  ✦  ✦</p>            → separador de cena
+<blockquote>Citação<cite>— Autor</cite></blockquote>
+<div class="epigraph">Epígrafe<cite>— Fonte</cite></div>
+<span class="pgnum">N</span>               → número da página (dentro de <page>)
+
+SUMÁRIO (se houver):
+<div class="toc-entry toc-part"><span>PARTE I...</span><span class="toc-dots"></span><span>N</span></div>
+<div class="toc-entry toc-cap"><span>Capítulo 1 — Título</span><span class="toc-dots"></span><span>N</span></div>
+
+REGRAS ABSOLUTAS:
+1. NÃO invente style= em nada. O CSS já cuida de tudo.
+2. NÃO altere uma letra do texto original.
+3. Retorne APENAS as tags <page>...</page> em sequência, sem markdown, sem explicação.
+4. Numeração começa em ${startPage}.
+${userStyle?`\n5. ESTILO EXTRA DO USUÁRIO: ${userStyle}`:''}`;
 }
 
-// ─────────────── DOCX PARSER ───────────────
-async function parseDocx(file) {
-  const arrayBuffer = await file.arrayBuffer();
-  const result = await mammoth.convertToHtml({ arrayBuffer });
-  const parser = new DOMParser();
-  const doc = parser.parseFromString(result.value, 'text/html');
-  const blocks = [];
-  let isFirstAfterHeading = true;
-
-  doc.body.childNodes.forEach(node => {
-    if (node.nodeType !== 1) return;
-    const el = node;
-    const text = (el.textContent || '').trim();
-    if (!text && el.tagName.toLowerCase() === 'p') return;
-
-    let type = 'paragraph';
-    const tag = el.tagName.toLowerCase();
-    if (tag === 'h1') type = 'heading1';
-    else if (tag === 'h2') type = 'heading2';
-    else if (tag === 'h3') type = 'heading3';
-
-    if (type === 'paragraph' && text.length < 50) {
-      const up = text.toUpperCase();
-      if (up.startsWith('CAPÍTULO') || up.startsWith('CHAPTER') || up.startsWith('PARTE ') || up.startsWith('PART ')) {
-        type = 'heading1';
-      }
+/* ═══ DOCX PARSER ═══ */
+async function parseDocx(file){
+  const ab=await file.arrayBuffer();
+  const{value}=await mammoth.convertToHtml({arrayBuffer:ab});
+  const doc=new DOMParser().parseFromString(value,'text/html');
+  const blocks=[];let firstAfterH=true;
+  doc.body.childNodes.forEach(node=>{
+    if(node.nodeType!==1)return;
+    const el=node,raw=(el.textContent||'').trim();
+    if(!raw&&el.tagName.toLowerCase()==='p')return;
+    let type='paragraph';
+    const tag=el.tagName.toLowerCase();
+    if(tag==='h1')type='heading1';
+    else if(tag==='h2')type='heading2';
+    else if(tag==='h3')type='heading3';
+    // auto-promove linhas curtas que são títulos de capítulo/parte
+    if(type==='paragraph'&&raw.length<60){
+      const up=raw.toUpperCase();
+      if(/^(CAPÍTULO|CHAPTER|PARTE |PART |EPÍLOGO|PRÓLOGO|PREFÁCIO|INTRODUÇÃO|CONCLUSÃO|SUMÁRIO)/.test(up))
+        type='heading1';
     }
-
-    let alignment = 'justify';
-    if (type.startsWith('heading')) alignment = 'center';
-
-    let isFirstOfSection = false;
-    if (type.startsWith('heading')) {
-      isFirstAfterHeading = true;
-    } else if (type === 'paragraph') {
-      isFirstOfSection = isFirstAfterHeading;
-      isFirstAfterHeading = false;
-    }
-
-    blocks.push({ type, text, alignment, isFirstOfSection });
+    let isFirst=false;
+    if(type.startsWith('heading'))firstAfterH=true;
+    else if(type==='paragraph'){isFirst=firstAfterH;firstAfterH=false;}
+    blocks.push({type,text:raw,isFirst});
   });
   return blocks;
 }
 
-// ─────────────── DOCX EXPORT ───────────────
-async function exportToDocx(blocks, config) {
-  const { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, Header, Footer, PageNumber } = docx;
-  const inToTwip = n => Math.round(n * 1440);
-  const dims = TRIM_SIZES[config.trimSize];
-
-  const pageProps = {
-    size: { width: inToTwip(dims.w), height: inToTwip(dims.h) },
-    margin: {
-      top: inToTwip(config.marginTop),
-      bottom: inToTwip(config.marginBottom),
-      left: inToTwip(config.marginLeft + config.gutter),
-      right: inToTwip(config.marginRight),
-    },
-  };
-
-  const children = blocks.map(block => {
-    let heading;
-    if (block.type === 'heading1') heading = HeadingLevel.HEADING_1;
-    else if (block.type === 'heading2') heading = HeadingLevel.HEADING_2;
-    else if (block.type === 'heading3') heading = HeadingLevel.HEADING_3;
-
-    const runs = [];
-    if (!heading && config.dropCaps && block.isFirstOfSection && block.text.length > 0) {
-      runs.push(new TextRun({ text: block.text.charAt(0), size: config.fontSize * 6, bold: true }));
-      runs.push(new TextRun({ text: block.text.substring(1), size: config.fontSize * 2 }));
-    } else {
-      runs.push(new TextRun({ text: block.text, size: config.fontSize * 2 }));
-    }
-
+/* ═══ DOCX EXPORT ═══ */
+async function exportDocx(blocks,config){
+  const{Document,Packer,Paragraph,TextRun,HeadingLevel,AlignmentType,Header,Footer,PageNumber}=window.docx;
+  const it=n=>Math.round(n*1440);
+  const dims=TRIM[config.trimSize];
+  const children=blocks.map(b=>{
+    let hl;
+    if(b.type==='heading1')hl=HeadingLevel.HEADING_1;
+    else if(b.type==='heading2')hl=HeadingLevel.HEADING_2;
+    else if(b.type==='heading3')hl=HeadingLevel.HEADING_3;
+    const runs=[];
+    if(!hl&&config.dropCaps&&b.isFirst&&b.text.length>0){
+      runs.push(new TextRun({text:b.text[0],size:11*6,bold:true}));
+      runs.push(new TextRun({text:b.text.slice(1),size:11*2}));
+    }else runs.push(new TextRun({text:b.text,size:11*2}));
     return new Paragraph({
-      children: heading ? undefined : runs,
-      text: heading ? block.text : undefined,
-      heading,
-      alignment: block.alignment === 'center' ? AlignmentType.CENTER : AlignmentType.JUSTIFIED,
-      pageBreakBefore: block.type === 'heading1',
-      indent: (!heading && config.firstLineIndent > 0 && !block.isFirstOfSection)
-        ? { firstLine: inToTwip(config.firstLineIndent) }
-        : undefined,
+      children:hl?undefined:runs,text:hl?b.text:undefined,heading:hl,
+      alignment:b.type.startsWith('heading')?AlignmentType.CENTER:AlignmentType.JUSTIFIED,
+      pageBreakBefore:b.type==='heading1',
+      indent:(!hl&&!b.isFirst)?{firstLine:it(0.25)}:undefined,
     });
   });
-
-  const doc2 = new Document({
-    sections: [{
-      properties: { page: pageProps },
-      headers: config.title ? {
-        default: new Header({ children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: config.title, italics: true, color: '888888', size: 18 })] })] }),
-      } : undefined,
-      footers: {
-        default: new Footer({ children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ children: [PageNumber.CURRENT], size: 18 })] })] }),
-      },
+  const doc2=new Document({
+    sections:[{
+      properties:{page:{size:{width:it(dims.w),height:it(dims.h)},margin:{top:it(0.8),bottom:it(0.8),left:it(0.75),right:it(0.6)}}},
+      headers:config.title?{default:new Header({children:[new Paragraph({alignment:AlignmentType.CENTER,children:[new TextRun({text:config.title,italics:true,color:'999999',size:18})]})]})}:undefined,
+      footers:{default:new Footer({children:[new Paragraph({alignment:AlignmentType.CENTER,children:[new TextRun({children:[PageNumber.CURRENT],size:18})]})]})},
       children,
     }],
-    styles: {
-      default: {
-        document: {
-          run: { font: config.fontFamily.split(',')[0].trim(), size: config.fontSize * 2 },
-          paragraph: { spacing: { line: Math.round(config.lineHeight * 240) } },
-        },
-      },
-    },
   });
-
-  const blob = await Packer.toBlob(doc2);
-  saveAs(blob, 'livro-formatado.docx');
+  saveAs(await Packer.toBlob(doc2),'livro-formatado.docx');
 }
 
-// ─────────────── IDB HELPERS (with graceful fallback) ───────────────
-const idbSafe = {
-  get: async (k) => { try { return window.idbGet ? await window.idbGet(k) : null; } catch { return null; } },
-  set: async (k, v) => { try { if (window.idbSet) await window.idbSet(k, v); } catch {} },
-};
+/* ═══ COMPONENTS ═══ */
 
-// ─────────────── AI PROMPT BUILDERS ───────────────
-function buildDiagramSystem(config, startPage, userPrompt) {
-  const dims = TRIM_SIZES[config.trimSize];
-  return `Você é um designer editorial premiado especialista em diagramação clássica de livros.
-Sua tarefa: transformar texto cru em páginas HTML lindamente diagramadas.
-NÃO ALTERE UMA PALAVRA sequer do texto original.
-
-REGRAS ABSOLUTAS:
-1. CADA PÁGINA = uma tag <article> com este estilo inline exato:
-   <article style="width:${dims.w}in; min-height:${dims.h}in; padding:${config.marginTop}in ${config.marginRight}in ${config.marginBottom}in ${config.marginLeft + config.gutter}in; position:relative; box-sizing:border-box; background:#fff; color:#111; overflow:hidden; margin:0 auto 2rem auto; box-shadow:0 10px 30px rgba(0,0,0,0.12); border:1px solid #e5e7eb; page-break-after:always;">
-
-2. PREENCHIMENTO: Cada página deve ter ~350-450 palavras. Preencha ao máximo antes de abrir nova página. NUNCA abra nova página para continuação de texto que cabe na atual.
-
-3. CSS INLINE SEMPRE. Use estilos inline em cada elemento:
-   - Parágrafo normal: style="font-family:${config.fontFamily}; font-size:${config.fontSize}pt; line-height:${config.lineHeight}; text-align:justify; text-indent:${config.firstLineIndent}in; margin:0 0 0 0;"
-   - Título H1 (capítulo): style="font-family:${config.fontFamily}; font-size:${config.fontSize * 2}pt; text-align:center; font-weight:bold; margin:1in 0 0.5in 0; letter-spacing:-0.5px;"
-   - H2/H3: proporcionais
-
-4. DROP CAP: Primeiro parágrafo de cada capítulo deve ter capitular:
-   <span style="float:left;font-size:${config.fontSize * 4}pt;line-height:0.75;margin-right:0.05in;font-family:${config.fontFamily};font-weight:bold;color:#333;">P</span>rimer letra assim...
-
-5. NÚMERO DE PÁGINA: Em cada <article>, adicione ao final:
-   <div style="position:absolute;bottom:0.4in;left:0;right:0;text-align:center;font-size:9pt;color:#888;font-family:${config.fontFamily};">NUMERO</div>
-   Este lote começa na página ${startPage}. Incremente sequencialmente.
-
-6. RETORNO PURO: Retorne APENAS as tags <article>...</article> em sequência. SEM markdown, SEM explicações.
-
-INSTRUÇÃO DO USUÁRIO: ${userPrompt || 'Design editorial premium, elegante e impecável.'}`;
+function Toggle({v,onChange}){
+  return <button className={`tog ${v?'on':''}`} onClick={()=>onChange(!v)} type="button"/>;
 }
 
-function buildCorrectionSystem() {
-  return `Você é um designer editorial expert. Sua tarefa: aplicar a instrução do usuário ao HTML diagramado existente.
+function Sidebar({cfg,setCfg,blocks,processedIdx,aiLoading,onDiagram,onResume,onApplyFix,onPdf,onDocx,onApiKey,onNewFile}){
+  const [prompt,setPrompt]=useState('');
+  const canResume=!!blocks&&processedIdx<blocks.length;
+  const isInit=processedIdx===0;
+  const pct=blocks?Math.round((Math.max(processedIdx,1)/blocks.length)*100):0;
+  const upd=(k,v)=>setCfg(c=>({...c,[k]:v}));
 
-REGRAS:
-1. Mantenha a estrutura de <article> exata com estilos inline.
-2. NÃO altere o texto original.
-3. Retorne APENAS o HTML puro completo, SEM markdown, SEM explicações.
-4. Aplique SOMENTE o que foi pedido. Preserve todo o resto.
-5. Retorne TODAS as páginas originais com as modificações.`;
-}
-
-// ─────────────── COMPONENTS ───────────────
-
-function Toggle({ value, onChange }) {
-  return (
-    <button
-      className={`toggle ${value ? 'on' : ''}`}
-      onClick={() => onChange(!value)}
-      type="button"
-    />
-  );
-}
-
-function SettingsSidebar({
-  config, setConfig,
-  onDiagram, onResume, onApplyCorrection, onExportPdf, onExportDocx,
-  aiLoading, blocks, processedIndex,
-  onOpenApiModal, onNewFile,
-}) {
-  const [prompt, setPrompt] = useState('');
-  const canResume = !!blocks && processedIndex < blocks.length;
-  const isInitial = processedIndex === 0;
-  const progress = blocks ? Math.round((Math.max(processedIndex, 1) / blocks.length) * 100) : 0;
-
-  const updateCfg = (k, v) => setConfig(c => ({ ...c, [k]: v }));
-
-  return (
-    <aside className="sidebar">
-      <div className="sidebar-header">
-        <div className="sidebar-logo">KDP <span>Diagramador</span> <span style={{fontSize:11,fontFamily:'Source Sans 3',fontWeight:400,color:'var(--ink-light)'}}>IA</span></div>
-        {blocks && (
-          <button onClick={onNewFile} style={{fontSize:11,color:'var(--ink-light)',background:'none',border:'none',cursor:'pointer',marginTop:4,textDecoration:'underline'}}>
-            ← Carregar novo arquivo
-          </button>
-        )}
+  return(
+    <aside className="sb">
+      <div className="sb-head">
+        <div className="sb-logo">KDP <em>Diagramador</em> IA</div>
+        {blocks&&<button className="sb-newfile" onClick={onNewFile}>← Novo arquivo</button>}
       </div>
+      <div className="sb-body">
 
-      <div className="sidebar-body">
+        {/* IA */}
+        <div className="sec">
+          <div className="sec-title">✦ Instruções da IA</div>
+          <div className="sec-body">
+            <textarea className="ai-ta" rows={3}
+              placeholder="Opcional: estilo gótico, ornamentos barrocos, fontes sans..."
+              value={prompt} onChange={e=>setPrompt(e.target.value)}/>
 
-        {/* AI Panel */}
-        <div className="ai-panel">
-          <div className="ai-panel-title">✦ Instruções para a IA</div>
-          <p className="info-text" style={{color:'#2d7d7d',marginBottom:8}}>
-            Descreva o estilo desejado, ou deixe em branco para design premium padrão.
-          </p>
-          <textarea
-            placeholder="Ex: Estilo gótico sombrio, fontes serifadas escuras, ornamentos medievais..."
-            value={prompt}
-            onChange={e => setPrompt(e.target.value)}
-          />
-
-          {/* Progress */}
-          {blocks && processedIndex > 0 && (
-            <div style={{marginBottom:8}}>
-              <div style={{display:'flex',justifyContent:'space-between',fontSize:11,color:'var(--teal)',marginBottom:3}}>
-                <span>Progresso</span>
-                <span>{progress}% ({processedIndex}/{blocks.length} blocos)</span>
+            {blocks&&processedIdx>0&&(
+              <div>
+                <div className="prog-label"><span>Progresso</span><span>{pct}% ({processedIdx}/{blocks.length})</span></div>
+                <div className="prog-wrap"><div className="prog-fill" style={{width:`${pct}%`}}/></div>
               </div>
-              <div className="progress-bar-wrap">
-                <div className="progress-bar-fill" style={{width:`${progress}%`}} />
-              </div>
-            </div>
-          )}
+            )}
 
-          <div style={{display:'flex',flexDirection:'column',gap:6}}>
-            {canResume && (
-              <button
-                className="btn btn-primary"
-                onClick={() => onResume()}
-                disabled={aiLoading}
-                style={{fontSize:12}}
-              >
-                {isInitial ? '▶ Iniciar Diagramação' : '▶ Continuar de onde parou'}
+            {canResume&&(
+              <button className="btn btn-gold" onClick={()=>onResume()} disabled={aiLoading}>
+                {isInit?'▶ Iniciar Diagramação':'▶ Continuar de onde parou'}
               </button>
             )}
-            <button
-              className="btn btn-outline"
-              onClick={() => { onDiagram(prompt); setPrompt(''); }}
-              disabled={!blocks || aiLoading}
-              style={{fontSize:12, borderColor:'var(--teal)', color:'var(--teal)'}}
-            >
-              {aiLoading ? '⏹ Interromper e Refazer' : '↺ Rediagramar com instrução'}
+            <button className="btn btn-dark" onClick={()=>{onDiagram(prompt);setPrompt('');}} disabled={!blocks||aiLoading}>
+              {aiLoading?'⏹ Interromper e Refazer':'↺ Rediagramar'}
             </button>
-            {prompt.trim() && (
-              <button
-                className="btn btn-outline"
-                onClick={() => { onApplyCorrection(prompt); setPrompt(''); }}
-                disabled={aiLoading}
-                style={{fontSize:12}}
-              >
-                ✎ Aplicar correção pontual
+            {prompt.trim()&&(
+              <button className="btn btn-ghost" onClick={()=>{onApplyFix(prompt);setPrompt('');}} disabled={aiLoading} style={{fontSize:11}}>
+                ✎ Correção pontual no HTML
               </button>
             )}
           </div>
         </div>
 
-        <div className="divider" />
+        <div className="div"/>
 
-        {/* Export */}
-        <div style={{display:'flex',flexDirection:'column',gap:6}}>
-          <button className="btn btn-secondary" onClick={onExportPdf}>
-            🖨 Exportar PDF (KDP)
-          </button>
-          <button className="btn btn-outline" onClick={onExportDocx} disabled={!blocks}>
-            📄 Exportar DOCX
-          </button>
-          <button className="btn btn-outline" onClick={onOpenApiModal} style={{fontSize:12}}>
-            🔑 Configurar Chave API
-          </button>
-        </div>
-
-        <div className="divider" />
-
-        {/* Book Meta */}
-        <div className="settings-section">
-          <div className="settings-section-title">Livro</div>
-          <div className="field-row">
-            <span className="field-label">Título</span>
-            <input className="field-input" value={config.title} onChange={e => updateCfg('title', e.target.value)} placeholder="Título do livro" />
-          </div>
-          <div className="field-row">
-            <span className="field-label">Autor</span>
-            <input className="field-input" value={config.author} onChange={e => updateCfg('author', e.target.value)} placeholder="Nome do autor" />
-          </div>
-          <div className="field-row">
-            <span className="field-label">Tamanho</span>
-            <select className="field-input" value={config.trimSize} onChange={e => updateCfg('trimSize', e.target.value)}>
-              {Object.entries(TRIM_SIZES).map(([k, v]) => <option key={k} value={k}>{v.name}</option>)}
-            </select>
+        {/* Exportar */}
+        <div className="sec">
+          <div className="sec-title">Exportar</div>
+          <div className="sec-body">
+            <button className="btn btn-gold" onClick={onPdf}>🖨 PDF para KDP</button>
+            <button className="btn btn-dark" onClick={onDocx} disabled={!blocks}>📄 Exportar DOCX</button>
+            <button className="btn btn-ghost" onClick={onApiKey} style={{fontSize:11}}>🔑 Chave API Gemini</button>
           </div>
         </div>
 
-        {/* Typography */}
-        <div className="settings-section">
-          <div className="settings-section-title">Tipografia</div>
-          <div className="field-row">
-            <span className="field-label">Fonte</span>
-            <select className="field-input" value={config.fontFamily} onChange={e => updateCfg('fontFamily', e.target.value)}>
-              <option value="Georgia, serif">Georgia</option>
-              <option value="'Times New Roman', serif">Times New Roman</option>
-              <option value="Garamond, serif">Garamond</option>
-              <option value="Palatino, serif">Palatino</option>
-              <option value="'Book Antiqua', serif">Book Antiqua</option>
-              <option value="Arial, sans-serif">Arial</option>
-            </select>
-          </div>
-          <div className="field-row">
-            <span className="field-label">Tamanho (pt)</span>
-            <input className="field-input" type="number" min={8} max={16} step={0.5}
-              value={config.fontSize} onChange={e => updateCfg('fontSize', parseFloat(e.target.value))} />
-          </div>
-          <div className="field-row">
-            <span className="field-label">Entrelinha</span>
-            <input className="field-input" type="number" min={1} max={2.5} step={0.05}
-              value={config.lineHeight} onChange={e => updateCfg('lineHeight', parseFloat(e.target.value))} />
-          </div>
-          <div className="field-row">
-            <span className="field-label">Recuo (in)</span>
-            <input className="field-input" type="number" min={0} max={0.5} step={0.05}
-              value={config.firstLineIndent} onChange={e => updateCfg('firstLineIndent', parseFloat(e.target.value))} />
-          </div>
-        </div>
+        <div className="div"/>
 
-        {/* Margins */}
-        <div className="settings-section">
-          <div className="settings-section-title">Margens (in)</div>
-          {['marginTop','marginBottom','marginLeft','marginRight','gutter'].map(k => (
-            <div key={k} className="field-row">
-              <span className="field-label" style={{textTransform:'capitalize'}}>{k.replace('margin','').replace('Margin','')}</span>
-              <input className="field-input" type="number" min={0.2} max={2} step={0.05}
-                value={config[k]} onChange={e => updateCfg(k, parseFloat(e.target.value))} />
+        {/* Livro */}
+        <div className="sec">
+          <div className="sec-title">Livro</div>
+          <div className="sec-body">
+            <div className="f-row"><span className="f-label">Título</span><input className="f-input" value={cfg.title} onChange={e=>upd('title',e.target.value)} placeholder="Título"/></div>
+            <div className="f-row"><span className="f-label">Autor</span><input className="f-input" value={cfg.author} onChange={e=>upd('author',e.target.value)} placeholder="Autor"/></div>
+            <div className="f-row"><span className="f-label">Tamanho</span>
+              <select className="f-input" value={cfg.trimSize} onChange={e=>upd('trimSize',e.target.value)}>
+                {Object.entries(TRIM).map(([k,v])=><option key={k} value={k}>{v.name}</option>)}
+              </select>
             </div>
-          ))}
+          </div>
         </div>
 
-        {/* Options */}
-        <div className="settings-section">
-          <div className="settings-section-title">Opções</div>
-          {[
-            ['dropCaps', 'Drop Caps (Capitulares)'],
-            ['addTitlePage', 'Página de Título'],
-            ['addCopyrightPage', 'Página de Direitos'],
-            ['addTableOfContents', 'Sumário'],
-          ].map(([k, label]) => (
-            <div key={k} className="toggle-row">
-              <span style={{fontSize:12}}>{label}</span>
-              <Toggle value={config[k]} onChange={v => updateCfg(k, v)} />
-            </div>
-          ))}
+        {/* Opções */}
+        <div className="sec">
+          <div className="sec-title">Opções</div>
+          <div className="sec-body">
+            {[['dropCaps','Drop Caps'],['addTitlePage','Pg. Título'],['addCopyrightPage','Pg. Direitos']].map(([k,l])=>(
+              <div key={k} className="tog-row"><span className="tog-label">{l}</span><Toggle v={cfg[k]} onChange={v=>upd(k,v)}/></div>
+            ))}
+          </div>
         </div>
 
       </div>
@@ -1056,423 +610,277 @@ function SettingsSidebar({
   );
 }
 
-function BookPreview({ aiHtml, aiLoading, processedIndex, totalCount }) {
-  const pages = useMemo(() => {
-    if (!aiHtml) return null;
-    if (!aiHtml.toLowerCase().includes('<article')) return null;
-    return aiHtml
-      .split(/<article/i)
-      .filter(p => p.trim() !== '')
-      .map(p => '<article ' + p);
-  }, [aiHtml]);
+function Preview({html,aiLoading,processedIdx,total}){
+  const pages=useMemo(()=>{
+    if(!html||!html.toLowerCase().includes('<page'))return null;
+    // split on opening <page tags
+    return html.split(/(?=<page[\s>])/i).filter(p=>p.trim()&&p.toLowerCase().startsWith('<page'));
+  },[html]);
 
-  const progress = totalCount ? Math.round((Math.max(processedIndex, 1) / totalCount) * 100) : 0;
+  const pct=total?Math.round((Math.max(processedIdx,1)/total)*100):0;
 
-  return (
-    <div className="preview-area">
-      <div className="preview-toolbar">
-        <span className="preview-toolbar-title">
-          {pages ? `${pages.length} página${pages.length !== 1 ? 's' : ''}` : 'Visualização'}
+  return(
+    <div className="pv">
+      <div className="pv-bar">
+        <span className="pv-bar-title">
+          {pages?`${pages.length} página${pages.length!==1?'s':''}`:aiLoading?'Gerando...':'Visualização'}
         </span>
-        {aiLoading && (
-          <span style={{fontSize:12,color:'var(--teal)',display:'flex',alignItems:'center',gap:6}}>
-            <div className="spinner" style={{borderTopColor:'var(--teal)',borderColor:'rgba(45,125,125,0.3)'}} />
-            Diagramando... {progress}%
-          </span>
-        )}
+        {aiLoading&&<span style={{fontSize:12,color:'#c9884e',display:'flex',alignItems:'center',gap:6}}>
+          <div className="spin spin-dark"/>Diagramando... {pct}%
+        </span>}
       </div>
-      <div className="preview-pages" id="book-preview-container">
-        {pages ? (
-          pages.map((html, i) => (
-            <div key={i} className="page-wrapper" dangerouslySetInnerHTML={{__html: html}} />
-          ))
-        ) : (
-          <div className="empty-preview">
-            <div className="book-icon">📖</div>
-            <h3>{processedIndex === 0 ? 'Livro Carregado' : 'Diagramação pausada'}</h3>
-            <p>
-              {processedIndex === 0
-                ? 'Clique em "Iniciar Diagramação" no painel esquerdo para a IA processar as páginas.'
-                : `Pausado em ${processedIndex} de ${totalCount} blocos. Clique em "Continuar" para retomar.`}
+      <div className="pv-scroll" id="pv">
+        {pages
+          ?pages.map((h,i)=><div key={i} className="pg-wrap" dangerouslySetInnerHTML={{__html:h}}/>)
+          :<div className="empty">
+            <div className="empty-icon">📖</div>
+            <h3>{processedIdx===0?'Livro carregado':'Pausado'}</h3>
+            <p>{processedIdx===0
+              ?'Clique em "Iniciar Diagramação" para a IA paginar seu livro.'
+              :`Pausado em ${processedIdx} de ${total} blocos.`}
             </p>
-            {aiLoading && (
-              <div style={{marginTop:20,width:'100%',maxWidth:280}}>
-                <div style={{display:'flex',justifyContent:'space-between',fontSize:12,color:'var(--teal)',marginBottom:4}}>
-                  <span>Gerando layout...</span><span>{progress}%</span>
-                </div>
-                <div className="progress-bar-wrap">
-                  <div className="progress-bar-fill" style={{width:`${progress}%`}} />
-                </div>
-              </div>
-            )}
+            {aiLoading&&<div style={{marginTop:16,width:260}}>
+              <div className="prog-label"><span>Gerando layout...</span><span>{pct}%</span></div>
+              <div className="prog-wrap"><div className="prog-fill" style={{width:`${pct}%`}}/></div>
+            </div>}
           </div>
-        )}
+        }
       </div>
     </div>
   );
 }
 
-function UploadScreen({ onFileLoaded, loading }) {
-  const [dragOver, setDragOver] = useState(false);
-
-  const handleFile = (file) => {
-    if (!file) return;
-    if (!file.name.endsWith('.docx')) { alert('Apenas arquivos .docx são suportados.'); return; }
-    onFileLoaded(file);
-  };
-
-  return (
-    <div className="upload-screen">
-      <div className="upload-hero">
+function UploadScreen({onFile,loading}){
+  const [drag,setDrag]=useState(false);
+  const go=f=>{if(!f)return;if(!f.name.endsWith('.docx')){alert('Apenas .docx');return;}onFile(f);};
+  return(
+    <div className="up-screen">
+      <div className="up-hero">
         <h1>Diagrame seu <em>livro</em></h1>
-        <p>Transforme seu manuscrito DOCX em um livro impecavelmente formatado e pronto para o Amazon KDP — com inteligência artificial.</p>
+        <p>Envie seu manuscrito DOCX e a IA produz um livro profissionalmente diagramado, pronto para o KDP.</p>
       </div>
-      <div
-        className={`dropzone ${dragOver ? 'drag-over' : ''}`}
-        onDragOver={e => { e.preventDefault(); setDragOver(true); }}
-        onDragLeave={() => setDragOver(false)}
-        onDrop={e => { e.preventDefault(); setDragOver(false); handleFile(e.dataTransfer.files[0]); }}
-      >
-        <input type="file" accept=".docx" onChange={e => handleFile(e.target.files[0])} />
-        {loading ? (
-          <>
-            <div className="dropzone-icon">⏳</div>
-            <h3>Processando manuscrito...</h3>
-            <p>Extraindo estrutura do documento</p>
-          </>
-        ) : (
-          <>
-            <div className="dropzone-icon">📚</div>
-            <h3>Arraste seu manuscrito aqui</h3>
-            <p>Arquivo Word (.docx) — ou clique para selecionar</p>
-            <div className="choose-btn">📁 Escolher arquivo DOCX</div>
-          </>
-        )}
+      <div className={`dropzone${drag?' drag':''}`}
+        onDragOver={e=>{e.preventDefault();setDrag(true);}}
+        onDragLeave={()=>setDrag(false)}
+        onDrop={e=>{e.preventDefault();setDrag(false);go(e.dataTransfer.files[0]);}}>
+        <input type="file" accept=".docx" onChange={e=>go(e.target.files[0])}/>
+        {loading
+          ?<><div className="dz-icon">⏳</div><div className="dz-title">Processando...</div></>
+          :<><div className="dz-icon">📚</div><div className="dz-title">Arraste o manuscrito aqui</div>
+            <div className="dz-sub">Arquivo Word (.docx)</div>
+            <div className="dz-btn">📁 Escolher arquivo</div></>}
       </div>
-      <p style={{fontSize:12,color:'var(--ink-light)',marginTop:16,textAlign:'center'}}>
-        ⚠️ Você precisará de uma chave API do Google Gemini.<br/>
-        Obtenha gratuitamente em <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" style={{color:'var(--teal)'}}>aistudio.google.com</a>
+      <p className="up-note">
+        Necessário: chave gratuita da API Gemini →{' '}
+        <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="link">aistudio.google.com</a>
       </p>
     </div>
   );
 }
 
-function ApiKeyModal({ onClose, apiKey, setApiKey }) {
-  const [local, setLocal] = useState(apiKey);
-  return (
-    <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+function ApiModal({onClose,apiKey,setApiKey}){
+  const [v,setV]=useState(apiKey);
+  const save=()=>{setApiKey(v.trim());localStorage.setItem('kdp-key',v.trim());onClose();};
+  return(
+    <div className="overlay" onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
       <div className="modal">
-        <button className="modal-close" onClick={onClose}>✕</button>
+        <button className="modal-x" onClick={onClose}>✕</button>
         <h3>🔑 Chave API Gemini</h3>
-        <p>Insira sua chave da API do Google Gemini. Ela é salva apenas no seu navegador (localStorage) e nunca é enviada para terceiros.</p>
-        <p style={{marginBottom:8}}>
-          <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" style={{color:'var(--teal)',fontSize:13}}>
-            → Obter chave gratuita no Google AI Studio
-          </a>
-        </p>
-        <input
-          type="password"
-          placeholder="AIzaSy..."
-          value={local}
-          onChange={e => setLocal(e.target.value)}
-          onKeyDown={e => { if (e.key === 'Enter') { setApiKey(local.trim()); localStorage.setItem('kdp-apiKey', local.trim()); onClose(); }}}
-        />
-        <p className="info-text">A cota gratuita do Gemini 2.5 Flash é generosa e suficiente para a maioria dos livros.</p>
+        <p>Salva apenas no seu navegador. Nunca sai do seu dispositivo.</p>
+        <p><a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="link">→ Obter chave gratuita no Google AI Studio</a></p>
+        <input type="password" placeholder="AIzaSy..." value={v} onChange={e=>setV(e.target.value)}
+          onKeyDown={e=>e.key==='Enter'&&save()}/>
         <div className="modal-actions">
-          <button className="btn btn-outline" style={{width:'auto',padding:'7px 14px'}}
-            onClick={() => { setApiKey(''); localStorage.removeItem('kdp-apiKey'); setLocal(''); onClose(); }}>
-            Limpar
-          </button>
-          <button className="btn btn-primary" style={{width:'auto',padding:'7px 18px'}}
-            onClick={() => { setApiKey(local.trim()); localStorage.setItem('kdp-apiKey', local.trim()); onClose(); }}>
-            Salvar
-          </button>
+          <button className="btn btn-ghost" onClick={()=>{setApiKey('');localStorage.removeItem('kdp-key');setV('');onClose();}}>Limpar</button>
+          <button className="btn btn-gold" onClick={save}>Salvar</button>
         </div>
       </div>
     </div>
   );
 }
 
-function ErrorModal({ msg, onClose }) {
-  return (
-    <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+function ErrModal({msg,onClose}){
+  return(
+    <div className="overlay" onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
       <div className="modal" style={{textAlign:'center'}}>
-        <button className="modal-close" onClick={onClose}>✕</button>
-        <div className="error-icon-wrap">⚠️</div>
-        <h3>Atenção</h3>
+        <button className="modal-x" onClick={onClose}>✕</button>
+        <div className="err-icon">⚠️</div>
+        <h3>Erro</h3>
         <p>{msg}</p>
-        <button className="btn btn-danger" style={{marginTop:16}} onClick={onClose}>Fechar</button>
+        <button className="btn btn-red" style={{marginTop:14}} onClick={onClose}>Fechar</button>
       </div>
     </div>
   );
 }
 
-function PdfWarningModal({ onClose }) {
-  const openNew = () => {
-    const url = new URL(window.location.href);
-    url.searchParams.set('print', 'true');
-    window.open(url.toString(), '_blank');
-    onClose();
-  };
-  return (
-    <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+function PdfModal({onClose}){
+  const go=()=>{const u=new URL(location.href);u.searchParams.set('print','1');window.open(u,'_blank');onClose();};
+  return(
+    <div className="overlay" onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
       <div className="modal" style={{textAlign:'center'}}>
-        <button className="modal-close" onClick={onClose}>✕</button>
-        <div style={{fontSize:40,marginBottom:12}}>🔗</div>
+        <button className="modal-x" onClick={onClose}>✕</button>
+        <div style={{fontSize:38,marginBottom:10}}>🔗</div>
         <h3>Abrir em nova aba</h3>
-        <p>Para salvar o PDF corretamente, o aplicativo precisa abrir em uma aba própria (sem iframes). Clique abaixo e o diálogo de impressão abrirá automaticamente.</p>
-        <button className="btn btn-primary" style={{marginTop:16}} onClick={openNew}>
-          🖨 Continuar e Salvar PDF
-        </button>
+        <p>O diálogo de PDF funciona melhor fora do iframe. Clique abaixo — o PDF abre automaticamente.</p>
+        <button className="btn btn-gold" style={{marginTop:14}} onClick={go}>🖨 Abrir e Salvar PDF</button>
       </div>
     </div>
   );
 }
 
-// ─────────────── MAIN APP ───────────────
-export default function App() {
-  const [config, setConfig] = useState(DEFAULT_CONFIG);
-  const [blocks, setBlocks] = useState(null);
-  const [aiHtml, setAiHtml] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [aiLoading, setAiLoading] = useState(false);
-  const [processedIndex, setProcessedIndex] = useState(0);
-  const [apiKey, setApiKey] = useState('');
-  const [errorMsg, setErrorMsg] = useState(null);
-  const [showApiModal, setShowApiModal] = useState(false);
-  const [showPdfWarning, setShowPdfWarning] = useState(false);
-  const abortRef = useRef(null);
+/* ═══ APP ═══ */
+function App(){
+  const [cfg,setCfg]=useState(DEF);
+  const [blocks,setBlocks]=useState(null);
+  const [html,setHtml]=useState(null);
+  const [loading,setLoading]=useState(false);
+  const [aiLoading,setAiLoading]=useState(false);
+  const [pidx,setPidx]=useState(0);
+  const [apiKey,setApiKey]=useState('');
+  const [err,setErr]=useState(null);
+  const [showApi,setShowApi]=useState(false);
+  const [showPdf,setShowPdf]=useState(false);
+  const abrt=useRef(null);
 
-  // Restore from IDB
-  useEffect(() => {
-    (async () => {
-      const savedKey = localStorage.getItem('kdp-apiKey') || '';
-      setApiKey(savedKey);
-
-      const b = await idbSafe.get('kdp-blocks');
-      if (b) setBlocks(b);
-      const h = await idbSafe.get('kdp-aiHtml');
-      if (h) {
-        setAiHtml(h);
-        if (window.location.search.includes('print=true')) {
-          setTimeout(() => window.print(), 1500);
-        }
-      }
-      const p = await idbSafe.get('kdp-processedIndex');
-      if (p != null) setProcessedIndex(p);
+  // restore
+  useEffect(()=>{
+    setApiKey(localStorage.getItem('kdp-key')||'');
+    (async()=>{
+      const b=await db.get('kdp-blocks');if(b)setBlocks(b);
+      const h=await db.get('kdp-html');if(h){setHtml(h);if(location.search.includes('print=1'))setTimeout(()=>window.print(),1200);}
+      const p=await db.get('kdp-pidx');if(p!=null)setPidx(p);
     })();
-  }, []);
+  },[]);
 
-  useEffect(() => { if (blocks) idbSafe.set('kdp-blocks', blocks); }, [blocks]);
-  useEffect(() => { if (aiHtml !== null) idbSafe.set('kdp-aiHtml', aiHtml); }, [aiHtml]);
-  useEffect(() => { idbSafe.set('kdp-processedIndex', processedIndex); }, [processedIndex]);
+  useEffect(()=>{if(blocks)db.set('kdp-blocks',blocks);},[blocks]);
+  useEffect(()=>{if(html!=null)db.set('kdp-html',html);},[html]);
+  useEffect(()=>{db.set('kdp-pidx',pidx);},[pidx]);
 
-  const handleFileLoaded = async (file) => {
-    try {
-      setLoading(true);
-      const parsed = await parseDocx(file);
-      setBlocks(parsed);
-      setAiHtml(null);
-      setProcessedIndex(0);
-    } catch (e) {
-      console.error(e);
-      setErrorMsg('Erro ao ler o DOCX. Certifique-se de que é um documento Word válido (.docx).');
-    } finally {
-      setLoading(false);
-    }
-  };
+  const needKey=()=>{if(!apiKey){setShowApi(true);return false;}return true;};
 
-  const requireApiKey = () => {
-    if (!apiKey) {
-      setShowApiModal(true);
-      return false;
-    }
-    return true;
-  };
+  /* DIAGRAMA — núcleo */
+  const doDiagram=useCallback(async(userStyle='',startIdx=0,baseHtml='')=>{
+    if(!blocks||!needKey())return;
+    if(abrt.current)abrt.current.abort();
+    const ctrl=new AbortController();abrt.current=ctrl;
 
-  const handleDiagram = useCallback(async (userPrompt = '', startIdx = 0, baseHtml = '') => {
-    if (!blocks) return;
-    if (!requireApiKey()) return;
+    try{
+      setAiLoading(true);setErr(null);
+      let out=baseHtml;
+      let pageNum=1;
 
-    if (abortRef.current) abortRef.current.abort();
-    const controller = new AbortController();
-    abortRef.current = controller;
-
-    try {
-      setAiLoading(true);
-      setErrorMsg(null);
-
-      let streamedData = baseHtml;
-      let pageOffset = 1;
-
-      if (startIdx === 0) {
-        setAiHtml('');
-        streamedData = '';
-        setProcessedIndex(0);
-      } else {
-        const matchArr = (baseHtml || aiHtml || '').match(/<article/gi);
-        pageOffset = matchArr ? matchArr.length + 1 : 1;
-        streamedData = baseHtml || aiHtml || '';
+      if(startIdx===0){setHtml('');out='';setPidx(0);}
+      else{
+        const m=(baseHtml||html||'').match(/<page[\s>]/gi);
+        pageNum=m?m.length+1:1;
+        out=baseHtml||html||'';
       }
 
-      const CHUNK_SIZE = 25;
+      // Chunk de 40 blocos — bom equilíbrio tamanho/custo
+      const CHUNK=40;
+      const sys=buildSys(pageNum,cfg.title,userStyle);
 
-      for (let i = startIdx; i < blocks.length; i += CHUNK_SIZE) {
-        if (controller.signal.aborted) return;
-        setProcessedIndex(i);
+      for(let i=startIdx;i<blocks.length;i+=CHUNK){
+        if(ctrl.signal.aborted)return;
+        setPidx(i);
 
-        const chunk = blocks.slice(i, i + CHUNK_SIZE);
-        const rawText = chunk.map(b => b.text).join('\n\n');
-        const sysPrompt = buildDiagramSystem(config, pageOffset, userPrompt);
+        const chunk=blocks.slice(i,i+CHUNK);
+        const text=chunk.map(b=>b.text).join('\n\n');
 
-        let chunkHtml = '';
-        await geminiStream(
-          apiKey,
-          sysPrompt,
-          `Texto Original para Diagramar:\n\n${rawText}`,
-          text => {
-            chunkHtml += text;
-            streamedData += text;
-            setAiHtml(streamedData);
-          },
-          controller.signal
-        );
+        let chunkOut='';
+        await gemStream(apiKey,sys,`Texto para paginar:\n\n${text}`,t=>{
+          chunkOut+=t;out+=t;setHtml(out);
+        },ctrl.signal);
 
-        const matchArr = chunkHtml.match(/<article/gi);
-        pageOffset += matchArr ? matchArr.length : 0;
-        setProcessedIndex(Math.min(i + CHUNK_SIZE, blocks.length));
-
-        if (i + CHUNK_SIZE < blocks.length) {
-          await new Promise(r => setTimeout(r, 1500));
-        }
+        const m=chunkOut.match(/<page[\s>]/gi);
+        pageNum+=m?m.length:0;
+        setPidx(Math.min(i+CHUNK,blocks.length));
+        if(i+CHUNK<blocks.length)await new Promise(r=>setTimeout(r,1200));
       }
-
-      setProcessedIndex(blocks.length);
-    } catch (e) {
-      if (e.name === 'AbortError') return;
-      console.error(e);
-      setErrorMsg(e.message || 'Erro na diagramação por IA.');
-    } finally {
-      if (abortRef.current === controller) setAiLoading(false);
+      setPidx(blocks.length);
+    }catch(e){
+      if(e.name==='AbortError')return;
+      setErr(e.message||'Erro na IA.');
+    }finally{
+      if(abrt.current===ctrl)setAiLoading(false);
     }
-  }, [blocks, config, apiKey, aiHtml]);
+  },[blocks,cfg,apiKey,html]);
 
-  const handleResume = useCallback(() => {
-    handleDiagram('', processedIndex, aiHtml || '');
-  }, [handleDiagram, processedIndex, aiHtml]);
+  const handleResume=useCallback(()=>doDiagram('',pidx,html||''),[doDiagram,pidx,html]);
 
-  const handleApplyCorrection = useCallback(async (userPrompt) => {
-    if (!aiHtml || !userPrompt.trim()) return;
-    if (!requireApiKey()) return;
+  const handleFix=useCallback(async userStyle=>{
+    if(!html||!userStyle.trim()||!needKey())return;
+    if(abrt.current)abrt.current.abort();
+    const ctrl=new AbortController();abrt.current=ctrl;
+    try{
+      setAiLoading(true);setErr(null);
+      const sys=`Você é editor HTML. Aplique APENAS a instrução do usuário ao HTML abaixo. Retorne o HTML completo modificado, sem markdown, sem explicações. NÃO altere texto original.`;
+      let out='';
+      await gemStream(apiKey,sys,`HTML:\n\n${html}\n\nInstrução: ${userStyle}`,t=>{out+=t;},ctrl.signal);
+      const clean=out.replace(/```html/g,'').replace(/```/g,'').trim();
+      setHtml(clean);
+    }catch(e){if(e.name!=='AbortError')setErr(e.message||'Erro.');}
+    finally{if(abrt.current===ctrl)setAiLoading(false);}
+  },[html,apiKey]);
 
-    if (abortRef.current) abortRef.current.abort();
-    const controller = new AbortController();
-    abortRef.current = controller;
-
-    try {
-      setAiLoading(true);
-      setErrorMsg(null);
-
-      const result = await geminiGenerate(
-        apiKey,
-        buildCorrectionSystem(),
-        `HTML Atual:\n\n${aiHtml}\n\nInstrução de Correção:\n${userPrompt}\n\nAplique a correção e retorne o HTML completo modificado.`,
-        controller.signal
-      );
-
-      const cleaned = result.replace(/```html/g, '').replace(/```/g, '').trim();
-      setAiHtml(cleaned);
-      // After correction, resume from where we were
-      const matchArr = cleaned.match(/<article/gi);
-      const pagesGenerated = matchArr ? matchArr.length : 0;
-      // Keep processedIndex as is — pages are already styled
-    } catch (e) {
-      if (e.name === 'AbortError') return;
-      console.error(e);
-      setErrorMsg(e.message || 'Erro ao aplicar correção.');
-    } finally {
-      if (abortRef.current === controller) setAiLoading(false);
-    }
-  }, [aiHtml, apiKey]);
-
-  const handleExportPdf = () => {
-    try {
-      if (window.self !== window.top) { setShowPdfWarning(true); return; }
-      window.print();
-    } catch { setShowPdfWarning(true); }
+  const handleFile=async f=>{
+    try{setLoading(true);const b=await parseDocx(f);setBlocks(b);setHtml(null);setPidx(0);}
+    catch(e){setErr('Erro ao ler DOCX: '+e.message);}
+    finally{setLoading(false);}
   };
 
-  const handleExportDocx = async () => {
-    if (!blocks) return;
-    try {
-      setLoading(true);
-      await exportToDocx(blocks, config);
-    } catch (e) {
-      console.error(e);
-      setErrorMsg('Erro ao gerar DOCX.');
-    } finally {
-      setLoading(false);
-    }
+  const handlePdf=()=>{
+    try{if(window.self!==window.top){setShowPdf(true);return;}window.print();}
+    catch{setShowPdf(true);}
   };
 
-  if (!blocks) {
-    return (
-      <div style={{display:'flex',height:'100vh',overflow:'hidden'}}>
-        <UploadScreen onFileLoaded={handleFileLoaded} loading={loading} />
-        {showApiModal && <ApiKeyModal onClose={() => setShowApiModal(false)} apiKey={apiKey} setApiKey={setApiKey} />}
-        {errorMsg && <ErrorModal msg={errorMsg} onClose={() => setErrorMsg(null)} />}
-      </div>
-    );
-  }
+  const handleDocx=async()=>{
+    if(!blocks)return;
+    try{setLoading(true);await exportDocx(blocks,cfg);}
+    catch(e){setErr('Erro DOCX: '+e.message);}
+    finally{setLoading(false);}
+  };
 
-  return (
-    <div className="app-layout">
-      <SettingsSidebar
-        config={config}
-        setConfig={setConfig}
-        onDiagram={handleDiagram}
-        onResume={handleResume}
-        onApplyCorrection={handleApplyCorrection}
-        onExportPdf={handleExportPdf}
-        onExportDocx={handleExportDocx}
-        aiLoading={aiLoading}
-        blocks={blocks}
-        processedIndex={processedIndex}
-        onOpenApiModal={() => setShowApiModal(true)}
-        onNewFile={() => { setBlocks(null); setAiHtml(null); setProcessedIndex(0); idbSafe.set('kdp-blocks', null); idbSafe.set('kdp-aiHtml', null); idbSafe.set('kdp-processedIndex', 0); }}
-      />
-      <BookPreview
-        aiHtml={aiHtml}
-        aiLoading={aiLoading}
-        processedIndex={processedIndex}
-        totalCount={blocks.length}
-      />
+  const reset=()=>{
+    setBlocks(null);setHtml(null);setPidx(0);
+    db.set('kdp-blocks',null);db.set('kdp-html',null);db.set('kdp-pidx',0);
+  };
 
-      {aiLoading && (
-        <div className="loading-toast">
-          <div className="spinner" />
-          <span>IA diagramando... {blocks ? Math.round((Math.max(processedIndex, 1) / blocks.length) * 100) : 0}%</span>
+  if(!blocks) return(
+    <>
+      <UploadScreen onFile={handleFile} loading={loading}/>
+      {showApi&&<ApiModal onClose={()=>setShowApi(false)} apiKey={apiKey} setApiKey={setApiKey}/>}
+      {err&&<ErrModal msg={err} onClose={()=>setErr(null)}/>}
+    </>
+  );
+
+  return(
+    <div className="app">
+      <Sidebar cfg={cfg} setCfg={setCfg} blocks={blocks} processedIdx={pidx}
+        aiLoading={aiLoading} onDiagram={doDiagram} onResume={handleResume}
+        onApplyFix={handleFix} onPdf={handlePdf} onDocx={handleDocx}
+        onApiKey={()=>setShowApi(true)} onNewFile={reset}/>
+      <Preview html={html} aiLoading={aiLoading} processedIdx={pidx} total={blocks.length}/>
+
+      {aiLoading&&<div className="toast"><div className="spin"/>
+        Diagramando... {blocks?Math.round((Math.max(pidx,1)/blocks.length)*100):0}%
+      </div>}
+
+      {showApi&&<ApiModal onClose={()=>setShowApi(false)} apiKey={apiKey} setApiKey={setApiKey}/>}
+      {showPdf&&<PdfModal onClose={()=>setShowPdf(false)}/>}
+      {err&&<ErrModal msg={err} onClose={()=>setErr(null)}/>}
+
+      {loading&&<div className="load-overlay">
+        <div style={{textAlign:'center'}}>
+          <div className="spin" style={{width:36,height:36,borderWidth:3,margin:'0 auto 12px'}}/>
+          <p style={{fontFamily:'Playfair Display,serif',color:'#333'}}>Processando...</p>
         </div>
-      )}
-
-      {showApiModal && <ApiKeyModal onClose={() => setShowApiModal(false)} apiKey={apiKey} setApiKey={setApiKey} />}
-      {showPdfWarning && <PdfWarningModal onClose={() => setShowPdfWarning(false)} />}
-      {errorMsg && <ErrorModal msg={errorMsg} onClose={() => setErrorMsg(null)} />}
-
-      {loading && (
-        <div style={{position:'fixed',inset:0,background:'rgba(255,255,255,0.8)',zIndex:300,display:'flex',alignItems:'center',justifyContent:'center',backdropFilter:'blur(4px)'}}>
-          <div style={{textAlign:'center'}}>
-            <div className="spinner" style={{width:40,height:40,borderWidth:4,margin:'0 auto 16px'}} />
-            <p style={{fontFamily:'Playfair Display',fontSize:16,color:'var(--ink)'}}>Processando...</p>
-          </div>
-        </div>
-      )}
+      </div>}
     </div>
   );
 }
 
-const root = ReactDOM.createRoot(document.getElementById('root'));
-root.render(<App />);
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
 </script>
 </body>
 </html>
