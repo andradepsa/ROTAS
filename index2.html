@@ -1128,6 +1128,29 @@ function PdfModal({onClose,onExport,pdfProgress}){
   );
 }
 
+/* ═══ DOCX EXPORT FROM HTML (modo Write) ═══ */
+async function exportDocxFromHtml(htmlStr,config){
+  const doc=new DOMParser().parseFromString(`<body>${htmlStr}</body>`,'text/html');
+  const blocks=[];
+  doc.querySelectorAll('page').forEach(pg=>{
+    pg.childNodes.forEach(node=>{
+      if(node.nodeType!==1)return;
+      const tag=node.tagName.toLowerCase();
+      const raw=(node.textContent||'').trim();
+      if(!raw)return;
+      if(tag==='h1'){blocks.push({type:'heading1',text:raw,isFirst:false});return;}
+      if(tag==='h2'){blocks.push({type:'heading2',text:raw,isFirst:false});return;}
+      if(tag==='h3'){blocks.push({type:'heading3',text:raw,isFirst:false});return;}
+      if(tag==='blockquote'){blocks.push({type:'blockquote',text:raw,isFirst:false});return;}
+      if(node.classList?.contains('chapter-num')||node.classList?.contains('chapter-rule')||node.classList?.contains('runhead'))return;
+      const isFirst=node.classList?.contains('dropcap')||node.classList?.contains('no-indent');
+      if(node.classList?.contains('ornament')){blocks.push({type:'separator',text:raw,isFirst:false});return;}
+      blocks.push({type:'paragraph',text:raw,isFirst:!!isFirst});
+    });
+  });
+  await exportDocx(blocks,config);
+}
+
 /* ═══ APP ═══ */
 function App(){
   // MODO: 'home' | 'docx' | 'write'
@@ -1569,31 +1592,6 @@ function App(){
     }finally{setLoading(false);}
   },[cfg]);
 
-/* ═══ DOCX EXPORT FROM HTML (modo Write) ═══
-   Extrai o texto das <page> geradas e monta blocos compatíveis com exportDocx
-═══════════════════════════════════════════════════════ */
-async function exportDocxFromHtml(htmlStr,config){
-  const doc=new DOMParser().parseFromString(`<body>${htmlStr}</body>`,'text/html');
-  const blocks=[];
-  doc.querySelectorAll('page').forEach(pg=>{
-    pg.childNodes.forEach(node=>{
-      if(node.nodeType!==1)return;
-      const tag=node.tagName.toLowerCase();
-      const raw=(node.textContent||'').trim();
-      if(!raw)return;
-      if(tag==='h1'){blocks.push({type:'heading1',text:raw,isFirst:false});return;}
-      if(tag==='h2'){blocks.push({type:'heading2',text:raw,isFirst:false});return;}
-      if(tag==='h3'){blocks.push({type:'heading3',text:raw,isFirst:false});return;}
-      if(tag==='blockquote'){blocks.push({type:'blockquote',text:raw,isFirst:false});return;}
-      if(node.classList?.contains('chapter-num')||node.classList?.contains('chapter-rule')||node.classList?.contains('runhead'))return;
-      const isFirst=node.classList?.contains('dropcap')||node.classList?.contains('no-indent');
-      if(node.classList?.contains('ornament')){blocks.push({type:'separator',text:raw,isFirst:false});return;}
-      blocks.push({type:'paragraph',text:raw,isFirst:!!isFirst});
-    });
-  });
-  await exportDocx(blocks,config);
-}
-
   const handleDocxExport=async()=>{
     if(!blocks)return;
     try{setLoading(true);await exportDocx(blocks,cfg);}
@@ -1607,6 +1605,8 @@ async function exportDocxFromHtml(htmlStr,config){
     catch(e){setErr('Erro DOCX: '+e.message);}
     finally{setLoading(false);}
   };
+
+  const reset=()=>{
     setAppMode('home');setBlocks(null);setHtml(null);setPidx(0);
     setOutline(null);setChapterStatus({});setWriteStartIdx(0);setWriteForm(null);setCurrentCap(null);
     db.set('kdp-mode','home');db.set('kdp-blocks',null);db.set('kdp-html',null);
@@ -1649,7 +1649,7 @@ async function exportDocxFromHtml(htmlStr,config){
     <div className="app">
       <SidebarWrite cfg={cfg} setCfg={setCfg} outline={outline}
         chapterStatus={chapterStatus} aiLoading={aiLoading} currentCap={currentCap}
-        onPdf={()=>setShowPdf(true)} onExportJpgs={handleExportJpgs}
+        onPdf={()=>setShowPdf(true)} onDocx={handleDocxExportWrite} onExportJpgs={handleExportJpgs}
         onApiKey={()=>setShowApi(true)} onNewFile={reset}
         html={html} onRegenChapter={handleRegenChapter}/>
       <Preview html={html} aiLoading={aiLoading} label={aiLabel}/>
@@ -1657,6 +1657,7 @@ async function exportDocxFromHtml(htmlStr,config){
       {showApi&&<ApiModal onClose={()=>setShowApi(false)} apiKey={apiKey} setApiKey={setApiKey}/>}
       {showPdf&&<PdfModal onClose={()=>{if(!pdfProgress)setShowPdf(false);}} onExport={exportPdfScreenshot} pdfProgress={pdfProgress}/>}
       {err&&<ErrModal msg={err} onClose={()=>setErr(null)}/>}
+      {loading&&<div className="load-overlay"><div className="spin spin-dark" style={{width:36,height:36,borderWidth:3}}/></div>}
     </div>
   );
 
