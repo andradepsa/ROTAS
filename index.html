@@ -464,7 +464,7 @@ function Toggle({v,onChange}){
   return <button className={`tog ${v?'on':''}`} onClick={()=>onChange(!v)} type="button"/>;
 }
 
-function Sidebar({cfg,setCfg,blocks,processedIdx,aiLoading,onDiagram,onResume,onApplyFix,onPdf,onDocx,onExportJpgs,onApiKey,onNewFile}){
+function Sidebar({cfg,setCfg,blocks,processedIdx,aiLoading,onDiagram,onResume,onApplyFix,onPdf,onDocx,onExportJpgs,onApiKey,onNewFile,onReset}){
   const[prompt,setPrompt]=useState('');
   const canResume=!!blocks&&processedIdx<blocks.length;
   const isInit=processedIdx===0;
@@ -525,6 +525,12 @@ function Sidebar({cfg,setCfg,blocks,processedIdx,aiLoading,onDiagram,onResume,on
               <div key={k} className="tog-row"><span className="tog-label">{l}</span><Toggle v={cfg[k]} onChange={v=>upd(k,v)}/></div>
             ))}
           </div>
+        </div>
+        <div className="div"/>
+        <div className="sec-body" style={{paddingBottom:16}}>
+          <button className="btn btn-red" onClick={()=>{if(confirm('Zerar tudo? Blocos, HTML e progresso serão apagados.'))onReset();}} disabled={aiLoading}>
+            🗑 Zerar Tudo
+          </button>
         </div>
       </div>
     </aside>
@@ -896,7 +902,7 @@ function App(){
       <Sidebar cfg={cfg} setCfg={setCfg} blocks={blocks} processedIdx={pidx}
         aiLoading={aiLoading} onDiagram={doDiagram} onResume={handleResume}
         onApplyFix={handleFix} onPdf={()=>setShowPdf(true)} onDocx={handleDocx}
-        onExportJpgs={handleExportJpgs} onApiKey={()=>setShowApi(true)} onNewFile={reset}/>
+        onExportJpgs={handleExportJpgs} onApiKey={()=>setShowApi(true)} onNewFile={reset} onReset={reset}/>
       <Preview html={html} aiLoading={aiLoading} processedIdx={pidx} total={blocks.length}/>
       {aiLoading&&<div className="toast"><div className="spin"/>
         Diagramando... {blocks?Math.round((Math.max(pidx,1)/blocks.length)*100):0}%
