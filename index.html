@@ -1,351 +1,1478 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-  <meta charset="UTF-8">
-  <title>Diagramador KDP - Arquivo Único</title>
-  
-  <!-- Tailwind CSS via CDN -->
-  <script src="https://cdn.tailwindcss.com"></script>
-  
-  <!-- Biblioteca Mammoth para leitura de arquivos Word (DOCX) -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.4.21/mammoth.browser.min.js"></script>
-  
-  <style>
-    /* Esconde barra lateral e modais na hora da impressão, ajusta a página para a janela inteira */
-    @media print {
-      body * { visibility: hidden; }
-      #preview-content, #preview-content * { visibility: visible; }
-      #preview-content { 
-        position: absolute; left: 0; top: 0; width: 100%; margin: 0; padding: 0; 
-        box-shadow: none !important; border: none !important; 
-      }
-      .hide-print { display: none !important; }
-      @page { margin: 0; }
-    }
-  </style>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>KDP Diagramador IA</title>
+
+<!-- Mammoth.js para parsear DOCX -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+<!-- FileSaver.js -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+<!-- docx.js para exportar DOCX -->
+<script src="https://unpkg.com/docx@8.2.2/build/index.js"></script>
+<!-- idb-keyval para persistência -->
+<script type="module">
+  import { get, set, del } from 'https://unpkg.com/idb-keyval@6/dist/index.js';
+  window.idbGet = get; window.idbSet = set; window.idbDel = del;
+</script>
+<!-- React + Babel -->
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700;900&family=Source+Sans+3:ital,wght@0,300;0,400;0,600;1,400&display=swap');
+
+  :root {
+    --ink: #1a1a2e;
+    --ink-light: #4a4a6a;
+    --paper: #faf9f7;
+    --paper-dark: #f0ede8;
+    --accent: #c9884e;
+    --accent-dark: #a8693a;
+    --teal: #2d7d7d;
+    --teal-light: #e8f5f5;
+    --border: #e2ddd6;
+    --white: #ffffff;
+    --shadow: 0 4px 24px rgba(26,26,46,0.10);
+    --shadow-lg: 0 12px 48px rgba(26,26,46,0.18);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Source Sans 3', sans-serif;
+    background: var(--paper);
+    color: var(--ink);
+    height: 100vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  #root { display: flex; flex-direction: column; height: 100vh; }
+
+  /* ===== SIDEBAR ===== */
+  .sidebar {
+    width: 300px;
+    background: var(--white);
+    border-right: 1px solid var(--border);
+    height: 100vh;
+    overflow-y: auto;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    z-index: 10;
+  }
+
+  .sidebar-header {
+    padding: 20px 22px 16px;
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    background: var(--white);
+    z-index: 5;
+  }
+
+  .sidebar-logo {
+    font-family: 'Playfair Display', serif;
+    font-size: 18px;
+    font-weight: 900;
+    color: var(--ink);
+    letter-spacing: -0.5px;
+    line-height: 1.2;
+  }
+
+  .sidebar-logo span { color: var(--accent); }
+
+  .sidebar-body { padding: 16px 16px 24px; flex: 1; display: flex; flex-direction: column; gap: 16px; }
+
+  /* ===== AI PANEL ===== */
+  .ai-panel {
+    background: linear-gradient(135deg, #e8f5f5 0%, #d4eeee 100%);
+    border: 1px solid #b2dada;
+    border-radius: 12px;
+    padding: 14px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .ai-panel::before {
+    content: '✦';
+    position: absolute;
+    top: 8px; right: 10px;
+    font-size: 40px;
+    color: var(--teal);
+    opacity: 0.08;
+    pointer-events: none;
+  }
+
+  .ai-panel-title {
+    font-family: 'Playfair Display', serif;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--teal);
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .ai-panel textarea {
+    width: 100%;
+    border: 1px solid #b2dada;
+    border-radius: 8px;
+    padding: 8px 10px;
+    font-family: 'Source Sans 3', sans-serif;
+    font-size: 12px;
+    color: var(--ink);
+    background: var(--white);
+    resize: vertical;
+    min-height: 80px;
+    outline: none;
+    transition: border-color 0.2s;
+    margin-bottom: 8px;
+  }
+
+  .ai-panel textarea:focus { border-color: var(--teal); }
+
+  /* ===== BUTTONS ===== */
+  .btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    width: 100%;
+    padding: 9px 14px;
+    border-radius: 8px;
+    font-family: 'Source Sans 3', sans-serif;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    border: none;
+    transition: all 0.15s;
+    letter-spacing: 0.01em;
+  }
+
+  .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+  .btn-primary {
+    background: var(--teal);
+    color: var(--white);
+  }
+  .btn-primary:hover:not(:disabled) { background: #256868; transform: translateY(-1px); }
+
+  .btn-secondary {
+    background: var(--ink);
+    color: var(--white);
+  }
+  .btn-secondary:hover:not(:disabled) { background: #2d2d50; transform: translateY(-1px); }
+
+  .btn-outline {
+    background: var(--white);
+    color: var(--ink);
+    border: 1px solid var(--border);
+  }
+  .btn-outline:hover:not(:disabled) { background: var(--paper); }
+
+  .btn-danger {
+    background: #dc2626;
+    color: var(--white);
+  }
+  .btn-danger:hover:not(:disabled) { background: #b91c1c; }
+
+  /* ===== SETTINGS SECTION ===== */
+  .settings-section {
+    background: var(--paper);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px;
+  }
+
+  .settings-section-title {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--ink-light);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-bottom: 10px;
+  }
+
+  .field-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+    gap: 8px;
+  }
+
+  .field-label {
+    font-size: 12px;
+    color: var(--ink);
+    flex-shrink: 0;
+    min-width: 80px;
+  }
+
+  .field-input {
+    flex: 1;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 4px 8px;
+    font-size: 12px;
+    font-family: 'Source Sans 3', sans-serif;
+    color: var(--ink);
+    background: var(--white);
+    outline: none;
+    transition: border-color 0.15s;
+  }
+
+  .field-input:focus { border-color: var(--teal); }
+
+  select.field-input { cursor: pointer; }
+
+  .toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 6px;
+  }
+
+  .toggle {
+    width: 32px;
+    height: 18px;
+    background: var(--border);
+    border-radius: 9px;
+    position: relative;
+    cursor: pointer;
+    transition: background 0.2s;
+    border: none;
+    outline: none;
+    flex-shrink: 0;
+  }
+
+  .toggle.on { background: var(--teal); }
+
+  .toggle::after {
+    content: '';
+    position: absolute;
+    width: 14px;
+    height: 14px;
+    background: white;
+    border-radius: 50%;
+    top: 2px;
+    left: 2px;
+    transition: left 0.2s;
+  }
+
+  .toggle.on::after { left: 16px; }
+
+  /* ===== MAIN LAYOUT ===== */
+  .app-layout {
+    display: flex;
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  /* ===== PREVIEW ===== */
+  .preview-area {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    background: #d8d3cc;
+    overflow: hidden;
+    position: relative;
+  }
+
+  .preview-toolbar {
+    height: 48px;
+    background: var(--white);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 20px;
+    z-index: 5;
+    flex-shrink: 0;
+  }
+
+  .preview-toolbar-title {
+    font-family: 'Playfair Display', serif;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--ink-light);
+    letter-spacing: 0.01em;
+  }
+
+  .preview-pages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 32px 24px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 20px;
+  }
+
+  .page-wrapper {
+    background: white;
+    box-shadow: var(--shadow-lg);
+    border: 1px solid #d8d3cc;
+  }
+
+  /* ===== UPLOAD SCREEN ===== */
+  .upload-screen {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: var(--paper);
+    padding: 40px;
+  }
+
+  .upload-hero {
+    text-align: center;
+    margin-bottom: 40px;
+  }
+
+  .upload-hero h1 {
+    font-family: 'Playfair Display', serif;
+    font-size: 48px;
+    font-weight: 900;
+    color: var(--ink);
+    letter-spacing: -2px;
+    line-height: 1;
+    margin-bottom: 12px;
+  }
+
+  .upload-hero h1 em {
+    color: var(--accent);
+    font-style: italic;
+  }
+
+  .upload-hero p {
+    font-size: 16px;
+    color: var(--ink-light);
+    max-width: 420px;
+    margin: 0 auto;
+    line-height: 1.5;
+  }
+
+  .dropzone {
+    width: 100%;
+    max-width: 480px;
+    background: var(--white);
+    border: 2px dashed var(--border);
+    border-radius: 20px;
+    padding: 48px 32px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    position: relative;
+  }
+
+  .dropzone:hover, .dropzone.drag-over {
+    border-color: var(--accent);
+    background: #fdf8f4;
+    transform: translateY(-2px);
+    box-shadow: var(--shadow);
+  }
+
+  .dropzone input[type=file] {
+    position: absolute; inset: 0; width: 100%; height: 100%;
+    opacity: 0; cursor: pointer;
+  }
+
+  .dropzone-icon {
+    font-size: 56px;
+    margin-bottom: 16px;
+    line-height: 1;
+  }
+
+  .dropzone h3 {
+    font-family: 'Playfair Display', serif;
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--ink);
+    margin-bottom: 6px;
+  }
+
+  .dropzone p {
+    font-size: 13px;
+    color: var(--ink-light);
+    margin-bottom: 20px;
+  }
+
+  .dropzone .choose-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--ink);
+    color: white;
+    font-family: 'Source Sans 3', sans-serif;
+    font-weight: 600;
+    font-size: 14px;
+    padding: 10px 22px;
+    border-radius: 10px;
+    border: none;
+    cursor: pointer;
+    pointer-events: none;
+    transition: background 0.15s;
+  }
+
+  /* ===== MODAL ===== */
+  .modal-overlay {
+    position: fixed; inset: 0;
+    background: rgba(26,26,46,0.6);
+    backdrop-filter: blur(4px);
+    z-index: 200;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+  }
+
+  .modal {
+    background: var(--white);
+    border-radius: 16px;
+    padding: 28px;
+    max-width: 440px;
+    width: 100%;
+    position: relative;
+    box-shadow: var(--shadow-lg);
+  }
+
+  .modal h3 {
+    font-family: 'Playfair Display', serif;
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--ink);
+    margin-bottom: 12px;
+  }
+
+  .modal p { font-size: 14px; color: var(--ink-light); margin-bottom: 10px; line-height: 1.5; }
+
+  .modal-close {
+    position: absolute;
+    top: 14px; right: 14px;
+    width: 28px; height: 28px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 18px;
+    color: var(--ink-light);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    transition: background 0.15s;
+  }
+
+  .modal-close:hover { background: var(--paper); }
+
+  .modal input[type=password], .modal input[type=text] {
+    width: 100%;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 9px 12px;
+    font-family: 'Source Sans 3', sans-serif;
+    font-size: 14px;
+    color: var(--ink);
+    background: var(--paper);
+    outline: none;
+    transition: border-color 0.15s;
+    margin-bottom: 8px;
+  }
+
+  .modal input:focus { border-color: var(--teal); background: var(--white); }
+
+  .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+
+  /* ===== PROGRESS BAR ===== */
+  .progress-bar-wrap { background: #e2ddd6; border-radius: 99px; height: 6px; overflow: hidden; margin-top: 6px; }
+  .progress-bar-fill { height: 100%; background: var(--teal); border-radius: 99px; transition: width 0.4s; }
+
+  /* ===== LOADING TOAST ===== */
+  .loading-toast {
+    position: fixed;
+    bottom: 24px; right: 24px;
+    background: var(--ink);
+    color: white;
+    padding: 12px 20px;
+    border-radius: 40px;
+    font-size: 13px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    box-shadow: var(--shadow-lg);
+    z-index: 100;
+    animation: toast-in 0.3s ease;
+  }
+
+  @keyframes toast-in {
+    from { transform: translateY(20px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+  }
+
+  .spinner {
+    width: 16px; height: 16px;
+    border: 2px solid rgba(255,255,255,0.3);
+    border-top-color: white;
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ===== EMPTY STATE ===== */
+  .empty-preview {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    text-align: center;
+    padding: 40px;
+    color: var(--ink-light);
+  }
+
+  .empty-preview .book-icon {
+    font-size: 64px;
+    margin-bottom: 20px;
+    animation: float 3s ease-in-out infinite;
+  }
+
+  @keyframes float {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-8px); }
+  }
+
+  .empty-preview h3 {
+    font-family: 'Playfair Display', serif;
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--ink);
+    margin-bottom: 8px;
+  }
+
+  .empty-preview p { font-size: 14px; max-width: 300px; line-height: 1.5; }
+
+  /* ===== ERROR BOX ===== */
+  .error-icon-wrap {
+    width: 48px; height: 48px;
+    background: #fee2e2;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 22px;
+    margin: 0 auto 12px;
+  }
+
+  /* ===== DIVIDER ===== */
+  .divider { height: 1px; background: var(--border); margin: 4px 0; }
+
+  /* ===== PRINT ===== */
+  @media print {
+    .sidebar, .preview-toolbar, .loading-toast, .modal-overlay { display: none !important; }
+    body, html { height: auto; overflow: visible; }
+    .app-layout { display: block; }
+    .preview-area { background: white; overflow: visible; }
+    .preview-pages { padding: 0; overflow: visible; display: block; }
+    .page-wrapper { box-shadow: none !important; border: none !important; margin: 0 !important; page-break-after: always; }
+  }
+
+  /* Badge */
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    background: var(--accent);
+    color: white;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 2px 7px;
+    border-radius: 99px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    margin-left: 6px;
+  }
+
+  .info-text { font-size: 11px; color: var(--ink-light); line-height: 1.4; margin-top: 4px; }
+</style>
 </head>
-<body class="bg-gray-50 font-sans h-screen w-full overflow-hidden flex">
+<body>
+<div id="root"></div>
 
-  <!-- ===============================
-       TELA INICIAL (UPLOAD) 
-       =============================== -->
-  <div id="upload-screen" class="flex-1 flex flex-col items-center justify-center p-8">
-    <div class="mb-12 text-center">
-      <h1 class="text-5xl font-black tracking-tight text-gray-900 mb-4">Diagramador KDP</h1>
-      <p class="text-xl text-gray-600 max-w-2xl mx-auto">
-        Transforme seu manuscrito cru em um livro imprimível em PDF usando Inteligência Artificial.<br>
-        <span class="text-sm font-bold text-blue-600 mt-2 block">(Versão em Arquivo HTML Único)</span>
-      </p>
-    </div>
-    
-    <div class="w-full max-w-xl mx-auto relative group">
-      <div class="absolute -inset-1 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-2xl blur opacity-25 group-hover:opacity-50 transition duration-1000"></div>
-      <div class="relative bg-white rounded-2xl p-8 border-2 border-dashed border-blue-300 hover:border-blue-500 hover:bg-blue-50 transition-colors flex flex-col items-center justify-center cursor-pointer min-h-[300px]" onclick="document.getElementById('fileInput').click()">
-        
-        <!-- Ícone de Upload -->
-        <svg xmlns="http://www.w3.org/2000/svg" class="w-12 h-12 text-blue-500 mb-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>
-        
-        <p class="text-xl font-medium text-gray-900 mb-2">Selecione seu Arquivo Word</p>
-        <p class="text-gray-500 text-sm">Clique e selecione o documento (.docx)</p>
-        
-        <input type="file" id="fileInput" class="hidden" accept=".docx" onchange="handleFile(event)">
+<script type="text/babel" data-type="module">
+const { useState, useRef, useEffect, useMemo, useCallback } = React;
+
+// ─────────────── CONSTANTS ───────────────
+const TRIM_SIZES = {
+  '5x8':     { name: '5" × 8"',         w: 5,    h: 8    },
+  '5.5x8.5': { name: '5.5" × 8.5"',     w: 5.5,  h: 8.5  },
+  '6x9':     { name: '6" × 9"',          w: 6,    h: 9    },
+  'A4':      { name: 'A4 (8.27" × 11.69")', w: 8.27, h: 11.69 },
+};
+
+const DEFAULT_CONFIG = {
+  trimSize: '6x9',
+  fontFamily: 'Georgia, serif',
+  fontSize: 11,
+  lineHeight: 1.5,
+  marginTop: 0.8,
+  marginBottom: 0.8,
+  marginLeft: 0.6,
+  marginRight: 0.6,
+  gutter: 0.15,
+  title: '',
+  author: '',
+  dropCaps: true,
+  firstLineIndent: 0.25,
+  addTitlePage: false,
+  addCopyrightPage: false,
+  addTableOfContents: false,
+};
+
+// ─────────────── GEMINI API ───────────────
+const GEMINI_MODEL = 'gemini-2.5-flash';
+const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta';
+
+async function geminiStream(apiKey, systemPrompt, userText, onChunk, signal) {
+  const url = `${GEMINI_BASE}/models/${GEMINI_MODEL}:streamGenerateContent?alt=sse&key=${apiKey}`;
+  const body = {
+    system_instruction: { parts: [{ text: systemPrompt }] },
+    contents: [{ role: 'user', parts: [{ text: userText }] }],
+    generationConfig: { temperature: 0.3 },
+  };
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    signal,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    if (res.status === 429) throw new Error('Limite de requisições (429). Aguarde e clique em Continuar.');
+    throw new Error(err?.error?.message || `Erro HTTP ${res.status}`);
+  }
+  const reader = res.body.getReader();
+  const dec = new TextDecoder();
+  let buf = '';
+  while (true) {
+    if (signal?.aborted) { reader.cancel(); return; }
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, { stream: true });
+    const lines = buf.split('\n');
+    buf = lines.pop();
+    for (const line of lines) {
+      if (!line.startsWith('data: ')) continue;
+      const data = line.slice(6).trim();
+      if (data === '[DONE]') continue;
+      try {
+        const json = JSON.parse(data);
+        const text = json.candidates?.[0]?.content?.parts?.[0]?.text || '';
+        if (text) onChunk(text);
+      } catch {}
+    }
+  }
+}
+
+async function geminiGenerate(apiKey, systemPrompt, userText, signal) {
+  const url = `${GEMINI_BASE}/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`;
+  const body = {
+    system_instruction: { parts: [{ text: systemPrompt }] },
+    contents: [{ role: 'user', parts: [{ text: userText }] }],
+    generationConfig: { temperature: 0.2 },
+  };
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    signal,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    if (res.status === 429) throw new Error('Limite de requisições (429). Aguarde e tente novamente.');
+    throw new Error(err?.error?.message || `Erro HTTP ${res.status}`);
+  }
+  const json = await res.json();
+  return json.candidates?.[0]?.content?.parts?.[0]?.text || '';
+}
+
+// ─────────────── DOCX PARSER ───────────────
+async function parseDocx(file) {
+  const arrayBuffer = await file.arrayBuffer();
+  const result = await mammoth.convertToHtml({ arrayBuffer });
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(result.value, 'text/html');
+  const blocks = [];
+  let isFirstAfterHeading = true;
+
+  doc.body.childNodes.forEach(node => {
+    if (node.nodeType !== 1) return;
+    const el = node;
+    const text = (el.textContent || '').trim();
+    if (!text && el.tagName.toLowerCase() === 'p') return;
+
+    let type = 'paragraph';
+    const tag = el.tagName.toLowerCase();
+    if (tag === 'h1') type = 'heading1';
+    else if (tag === 'h2') type = 'heading2';
+    else if (tag === 'h3') type = 'heading3';
+
+    if (type === 'paragraph' && text.length < 50) {
+      const up = text.toUpperCase();
+      if (up.startsWith('CAPÍTULO') || up.startsWith('CHAPTER') || up.startsWith('PARTE ') || up.startsWith('PART ')) {
+        type = 'heading1';
+      }
+    }
+
+    let alignment = 'justify';
+    if (type.startsWith('heading')) alignment = 'center';
+
+    let isFirstOfSection = false;
+    if (type.startsWith('heading')) {
+      isFirstAfterHeading = true;
+    } else if (type === 'paragraph') {
+      isFirstOfSection = isFirstAfterHeading;
+      isFirstAfterHeading = false;
+    }
+
+    blocks.push({ type, text, alignment, isFirstOfSection });
+  });
+  return blocks;
+}
+
+// ─────────────── DOCX EXPORT ───────────────
+async function exportToDocx(blocks, config) {
+  const { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, Header, Footer, PageNumber } = docx;
+  const inToTwip = n => Math.round(n * 1440);
+  const dims = TRIM_SIZES[config.trimSize];
+
+  const pageProps = {
+    size: { width: inToTwip(dims.w), height: inToTwip(dims.h) },
+    margin: {
+      top: inToTwip(config.marginTop),
+      bottom: inToTwip(config.marginBottom),
+      left: inToTwip(config.marginLeft + config.gutter),
+      right: inToTwip(config.marginRight),
+    },
+  };
+
+  const children = blocks.map(block => {
+    let heading;
+    if (block.type === 'heading1') heading = HeadingLevel.HEADING_1;
+    else if (block.type === 'heading2') heading = HeadingLevel.HEADING_2;
+    else if (block.type === 'heading3') heading = HeadingLevel.HEADING_3;
+
+    const runs = [];
+    if (!heading && config.dropCaps && block.isFirstOfSection && block.text.length > 0) {
+      runs.push(new TextRun({ text: block.text.charAt(0), size: config.fontSize * 6, bold: true }));
+      runs.push(new TextRun({ text: block.text.substring(1), size: config.fontSize * 2 }));
+    } else {
+      runs.push(new TextRun({ text: block.text, size: config.fontSize * 2 }));
+    }
+
+    return new Paragraph({
+      children: heading ? undefined : runs,
+      text: heading ? block.text : undefined,
+      heading,
+      alignment: block.alignment === 'center' ? AlignmentType.CENTER : AlignmentType.JUSTIFIED,
+      pageBreakBefore: block.type === 'heading1',
+      indent: (!heading && config.firstLineIndent > 0 && !block.isFirstOfSection)
+        ? { firstLine: inToTwip(config.firstLineIndent) }
+        : undefined,
+    });
+  });
+
+  const doc2 = new Document({
+    sections: [{
+      properties: { page: pageProps },
+      headers: config.title ? {
+        default: new Header({ children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: config.title, italics: true, color: '888888', size: 18 })] })] }),
+      } : undefined,
+      footers: {
+        default: new Footer({ children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ children: [PageNumber.CURRENT], size: 18 })] })] }),
+      },
+      children,
+    }],
+    styles: {
+      default: {
+        document: {
+          run: { font: config.fontFamily.split(',')[0].trim(), size: config.fontSize * 2 },
+          paragraph: { spacing: { line: Math.round(config.lineHeight * 240) } },
+        },
+      },
+    },
+  });
+
+  const blob = await Packer.toBlob(doc2);
+  saveAs(blob, 'livro-formatado.docx');
+}
+
+// ─────────────── IDB HELPERS (with graceful fallback) ───────────────
+const idbSafe = {
+  get: async (k) => { try { return window.idbGet ? await window.idbGet(k) : null; } catch { return null; } },
+  set: async (k, v) => { try { if (window.idbSet) await window.idbSet(k, v); } catch {} },
+};
+
+// ─────────────── AI PROMPT BUILDERS ───────────────
+function buildDiagramSystem(config, startPage, userPrompt) {
+  const dims = TRIM_SIZES[config.trimSize];
+  return `Você é um designer editorial premiado especialista em diagramação clássica de livros.
+Sua tarefa: transformar texto cru em páginas HTML lindamente diagramadas.
+NÃO ALTERE UMA PALAVRA sequer do texto original.
+
+REGRAS ABSOLUTAS:
+1. CADA PÁGINA = uma tag <article> com este estilo inline exato:
+   <article style="width:${dims.w}in; min-height:${dims.h}in; padding:${config.marginTop}in ${config.marginRight}in ${config.marginBottom}in ${config.marginLeft + config.gutter}in; position:relative; box-sizing:border-box; background:#fff; color:#111; overflow:hidden; margin:0 auto 2rem auto; box-shadow:0 10px 30px rgba(0,0,0,0.12); border:1px solid #e5e7eb; page-break-after:always;">
+
+2. PREENCHIMENTO: Cada página deve ter ~350-450 palavras. Preencha ao máximo antes de abrir nova página. NUNCA abra nova página para continuação de texto que cabe na atual.
+
+3. CSS INLINE SEMPRE. Use estilos inline em cada elemento:
+   - Parágrafo normal: style="font-family:${config.fontFamily}; font-size:${config.fontSize}pt; line-height:${config.lineHeight}; text-align:justify; text-indent:${config.firstLineIndent}in; margin:0 0 0 0;"
+   - Título H1 (capítulo): style="font-family:${config.fontFamily}; font-size:${config.fontSize * 2}pt; text-align:center; font-weight:bold; margin:1in 0 0.5in 0; letter-spacing:-0.5px;"
+   - H2/H3: proporcionais
+
+4. DROP CAP: Primeiro parágrafo de cada capítulo deve ter capitular:
+   <span style="float:left;font-size:${config.fontSize * 4}pt;line-height:0.75;margin-right:0.05in;font-family:${config.fontFamily};font-weight:bold;color:#333;">P</span>rimer letra assim...
+
+5. NÚMERO DE PÁGINA: Em cada <article>, adicione ao final:
+   <div style="position:absolute;bottom:0.4in;left:0;right:0;text-align:center;font-size:9pt;color:#888;font-family:${config.fontFamily};">NUMERO</div>
+   Este lote começa na página ${startPage}. Incremente sequencialmente.
+
+6. RETORNO PURO: Retorne APENAS as tags <article>...</article> em sequência. SEM markdown, SEM explicações.
+
+INSTRUÇÃO DO USUÁRIO: ${userPrompt || 'Design editorial premium, elegante e impecável.'}`;
+}
+
+function buildCorrectionSystem() {
+  return `Você é um designer editorial expert. Sua tarefa: aplicar a instrução do usuário ao HTML diagramado existente.
+
+REGRAS:
+1. Mantenha a estrutura de <article> exata com estilos inline.
+2. NÃO altere o texto original.
+3. Retorne APENAS o HTML puro completo, SEM markdown, SEM explicações.
+4. Aplique SOMENTE o que foi pedido. Preserve todo o resto.
+5. Retorne TODAS as páginas originais com as modificações.`;
+}
+
+// ─────────────── COMPONENTS ───────────────
+
+function Toggle({ value, onChange }) {
+  return (
+    <button
+      className={`toggle ${value ? 'on' : ''}`}
+      onClick={() => onChange(!value)}
+      type="button"
+    />
+  );
+}
+
+function SettingsSidebar({
+  config, setConfig,
+  onDiagram, onResume, onApplyCorrection, onExportPdf, onExportDocx,
+  aiLoading, blocks, processedIndex,
+  onOpenApiModal, onNewFile,
+}) {
+  const [prompt, setPrompt] = useState('');
+  const canResume = !!blocks && processedIndex < blocks.length;
+  const isInitial = processedIndex === 0;
+  const progress = blocks ? Math.round((Math.max(processedIndex, 1) / blocks.length) * 100) : 0;
+
+  const updateCfg = (k, v) => setConfig(c => ({ ...c, [k]: v }));
+
+  return (
+    <aside className="sidebar">
+      <div className="sidebar-header">
+        <div className="sidebar-logo">KDP <span>Diagramador</span> <span style={{fontSize:11,fontFamily:'Source Sans 3',fontWeight:400,color:'var(--ink-light)'}}>IA</span></div>
+        {blocks && (
+          <button onClick={onNewFile} style={{fontSize:11,color:'var(--ink-light)',background:'none',border:'none',cursor:'pointer',marginTop:4,textDecoration:'underline'}}>
+            ← Carregar novo arquivo
+          </button>
+        )}
       </div>
-    </div>
-  </div>
 
+      <div className="sidebar-body">
 
-  <!-- ===============================
-       TELA DO EDITOR E VISUALIZAÇÃO
-       =============================== -->
-  <div id="editor-screen" class="hidden flex-1 h-full w-full">
-    
-    <!-- BARRA LATERAL ESQUERDA -->
-    <aside class="w-80 bg-white border-r border-gray-200 flex flex-col h-full shadow-lg z-10 hide-print">
-      <div class="p-6 flex-1 flex flex-col">
-        <h2 class="text-2xl font-bold text-gray-900 mb-6 flex items-center">
-          <svg class="w-6 h-6 mr-2 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"></path></svg> 
-          Opções
-        </h2>
-        
-        <div class="space-y-4 flex-1">
-          <div class="space-y-2">
-            <label class="text-sm font-semibold text-gray-700">Instruções Extras para a IA</label>
-            <textarea id="ai-prompt" placeholder="Ex: Deixe os títulos dos capítulos maiores, adicione letras capitulares capitulares no início..." class="w-full h-32 p-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 resize-none font-sans"></textarea>
+        {/* AI Panel */}
+        <div className="ai-panel">
+          <div className="ai-panel-title">✦ Instruções para a IA</div>
+          <p className="info-text" style={{color:'#2d7d7d',marginBottom:8}}>
+            Descreva o estilo desejado, ou deixe em branco para design premium padrão.
+          </p>
+          <textarea
+            placeholder="Ex: Estilo gótico sombrio, fontes serifadas escuras, ornamentos medievais..."
+            value={prompt}
+            onChange={e => setPrompt(e.target.value)}
+          />
+
+          {/* Progress */}
+          {blocks && processedIndex > 0 && (
+            <div style={{marginBottom:8}}>
+              <div style={{display:'flex',justifyContent:'space-between',fontSize:11,color:'var(--teal)',marginBottom:3}}>
+                <span>Progresso</span>
+                <span>{progress}% ({processedIndex}/{blocks.length} blocos)</span>
+              </div>
+              <div className="progress-bar-wrap">
+                <div className="progress-bar-fill" style={{width:`${progress}%`}} />
+              </div>
+            </div>
+          )}
+
+          <div style={{display:'flex',flexDirection:'column',gap:6}}>
+            {canResume && (
+              <button
+                className="btn btn-primary"
+                onClick={() => onResume()}
+                disabled={aiLoading}
+                style={{fontSize:12}}
+              >
+                {isInitial ? '▶ Iniciar Diagramação' : '▶ Continuar de onde parou'}
+              </button>
+            )}
+            <button
+              className="btn btn-outline"
+              onClick={() => { onDiagram(prompt); setPrompt(''); }}
+              disabled={!blocks || aiLoading}
+              style={{fontSize:12, borderColor:'var(--teal)', color:'var(--teal)'}}
+            >
+              {aiLoading ? '⏹ Interromper e Refazer' : '↺ Rediagramar com instrução'}
+            </button>
+            {prompt.trim() && (
+              <button
+                className="btn btn-outline"
+                onClick={() => { onApplyCorrection(prompt); setPrompt(''); }}
+                disabled={aiLoading}
+                style={{fontSize:12}}
+              >
+                ✎ Aplicar correção pontual
+              </button>
+            )}
           </div>
-          <button onclick="startDiagramming()" id="btn-diagramar" class="w-full bg-blue-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-blue-700 transition shadow-sm">
-             Diagramar com IA
+        </div>
+
+        <div className="divider" />
+
+        {/* Export */}
+        <div style={{display:'flex',flexDirection:'column',gap:6}}>
+          <button className="btn btn-secondary" onClick={onExportPdf}>
+            🖨 Exportar PDF (KDP)
+          </button>
+          <button className="btn btn-outline" onClick={onExportDocx} disabled={!blocks}>
+            📄 Exportar DOCX
+          </button>
+          <button className="btn btn-outline" onClick={onOpenApiModal} style={{fontSize:12}}>
+            🔑 Configurar Chave API
           </button>
         </div>
 
-        <div class="mt-auto space-y-3 pt-6 border-t border-gray-100">
-           <!-- Botão de gerar PDF (chama janela de impressão do sistema) -->
-           <button onclick="printPdf()" class="w-full flex items-center justify-center gap-2 bg-gray-900 text-white font-medium py-3 px-4 rounded-lg hover:bg-black transition-colors shadow-sm">
-             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"></path></svg> 
-             Salvar Livro em PDF
-           </button>
-           <!-- Botão de configuração da Chave API -->
-           <button onclick="document.getElementById('api-modal').style.display = 'flex'" class="w-full flex items-center justify-center gap-2 border border-gray-300 text-gray-700 font-medium py-2 px-4 rounded-lg hover:bg-gray-50 transition-colors text-sm">
-              Configurar Chave API (Gemini)
-           </button>
+        <div className="divider" />
+
+        {/* Book Meta */}
+        <div className="settings-section">
+          <div className="settings-section-title">Livro</div>
+          <div className="field-row">
+            <span className="field-label">Título</span>
+            <input className="field-input" value={config.title} onChange={e => updateCfg('title', e.target.value)} placeholder="Título do livro" />
+          </div>
+          <div className="field-row">
+            <span className="field-label">Autor</span>
+            <input className="field-input" value={config.author} onChange={e => updateCfg('author', e.target.value)} placeholder="Nome do autor" />
+          </div>
+          <div className="field-row">
+            <span className="field-label">Tamanho</span>
+            <select className="field-input" value={config.trimSize} onChange={e => updateCfg('trimSize', e.target.value)}>
+              {Object.entries(TRIM_SIZES).map(([k, v]) => <option key={k} value={k}>{v.name}</option>)}
+            </select>
+          </div>
         </div>
+
+        {/* Typography */}
+        <div className="settings-section">
+          <div className="settings-section-title">Tipografia</div>
+          <div className="field-row">
+            <span className="field-label">Fonte</span>
+            <select className="field-input" value={config.fontFamily} onChange={e => updateCfg('fontFamily', e.target.value)}>
+              <option value="Georgia, serif">Georgia</option>
+              <option value="'Times New Roman', serif">Times New Roman</option>
+              <option value="Garamond, serif">Garamond</option>
+              <option value="Palatino, serif">Palatino</option>
+              <option value="'Book Antiqua', serif">Book Antiqua</option>
+              <option value="Arial, sans-serif">Arial</option>
+            </select>
+          </div>
+          <div className="field-row">
+            <span className="field-label">Tamanho (pt)</span>
+            <input className="field-input" type="number" min={8} max={16} step={0.5}
+              value={config.fontSize} onChange={e => updateCfg('fontSize', parseFloat(e.target.value))} />
+          </div>
+          <div className="field-row">
+            <span className="field-label">Entrelinha</span>
+            <input className="field-input" type="number" min={1} max={2.5} step={0.05}
+              value={config.lineHeight} onChange={e => updateCfg('lineHeight', parseFloat(e.target.value))} />
+          </div>
+          <div className="field-row">
+            <span className="field-label">Recuo (in)</span>
+            <input className="field-input" type="number" min={0} max={0.5} step={0.05}
+              value={config.firstLineIndent} onChange={e => updateCfg('firstLineIndent', parseFloat(e.target.value))} />
+          </div>
+        </div>
+
+        {/* Margins */}
+        <div className="settings-section">
+          <div className="settings-section-title">Margens (in)</div>
+          {['marginTop','marginBottom','marginLeft','marginRight','gutter'].map(k => (
+            <div key={k} className="field-row">
+              <span className="field-label" style={{textTransform:'capitalize'}}>{k.replace('margin','').replace('Margin','')}</span>
+              <input className="field-input" type="number" min={0.2} max={2} step={0.05}
+                value={config[k]} onChange={e => updateCfg(k, parseFloat(e.target.value))} />
+            </div>
+          ))}
+        </div>
+
+        {/* Options */}
+        <div className="settings-section">
+          <div className="settings-section-title">Opções</div>
+          {[
+            ['dropCaps', 'Drop Caps (Capitulares)'],
+            ['addTitlePage', 'Página de Título'],
+            ['addCopyrightPage', 'Página de Direitos'],
+            ['addTableOfContents', 'Sumário'],
+          ].map(([k, label]) => (
+            <div key={k} className="toggle-row">
+              <span style={{fontSize:12}}>{label}</span>
+              <Toggle value={config[k]} onChange={v => updateCfg(k, v)} />
+            </div>
+          ))}
+        </div>
+
       </div>
     </aside>
+  );
+}
 
-    <!-- ÁREA CENTRAL DO LIVRO (ONDE A MÁGICA ACONTECE) -->
-    <main class="flex-1 bg-gray-200 overflow-y-auto relative flex flex-col items-center py-10" id="preview-main">
-       <!-- Elemento que receberá o HTML montado pela Inteligência Artificial -->
-       <div id="preview-content" class="pb-20 w-fit flex flex-col gap-6">
-          <div class="text-center text-gray-500 font-medium mt-20" id="preview-placeholder">
-             Após carregar o arquivo, clique em Diagramar.
+function BookPreview({ aiHtml, aiLoading, processedIndex, totalCount }) {
+  const pages = useMemo(() => {
+    if (!aiHtml) return null;
+    if (!aiHtml.toLowerCase().includes('<article')) return null;
+    return aiHtml
+      .split(/<article/i)
+      .filter(p => p.trim() !== '')
+      .map(p => '<article ' + p);
+  }, [aiHtml]);
+
+  const progress = totalCount ? Math.round((Math.max(processedIndex, 1) / totalCount) * 100) : 0;
+
+  return (
+    <div className="preview-area">
+      <div className="preview-toolbar">
+        <span className="preview-toolbar-title">
+          {pages ? `${pages.length} página${pages.length !== 1 ? 's' : ''}` : 'Visualização'}
+        </span>
+        {aiLoading && (
+          <span style={{fontSize:12,color:'var(--teal)',display:'flex',alignItems:'center',gap:6}}>
+            <div className="spinner" style={{borderTopColor:'var(--teal)',borderColor:'rgba(45,125,125,0.3)'}} />
+            Diagramando... {progress}%
+          </span>
+        )}
+      </div>
+      <div className="preview-pages" id="book-preview-container">
+        {pages ? (
+          pages.map((html, i) => (
+            <div key={i} className="page-wrapper" dangerouslySetInnerHTML={{__html: html}} />
+          ))
+        ) : (
+          <div className="empty-preview">
+            <div className="book-icon">📖</div>
+            <h3>{processedIndex === 0 ? 'Livro Carregado' : 'Diagramação pausada'}</h3>
+            <p>
+              {processedIndex === 0
+                ? 'Clique em "Iniciar Diagramação" no painel esquerdo para a IA processar as páginas.'
+                : `Pausado em ${processedIndex} de ${totalCount} blocos. Clique em "Continuar" para retomar.`}
+            </p>
+            {aiLoading && (
+              <div style={{marginTop:20,width:'100%',maxWidth:280}}>
+                <div style={{display:'flex',justifyContent:'space-between',fontSize:12,color:'var(--teal)',marginBottom:4}}>
+                  <span>Gerando layout...</span><span>{progress}%</span>
+                </div>
+                <div className="progress-bar-wrap">
+                  <div className="progress-bar-fill" style={{width:`${progress}%`}} />
+                </div>
+              </div>
+            )}
           </div>
-       </div>
-    </main>
-  </div>
-
-
-  <!-- ===============================
-       SISTEMA DE MODAIS (POP-UPS)
-       =============================== -->
-
-  <!-- Modal da Chave de API -->
-  <div id="api-modal" class="fixed inset-0 bg-black/50 z-50 hidden flex items-center justify-center backdrop-blur-sm hide-print">
-    <div class="bg-white rounded-xl shadow-2xl max-w-md w-full p-6 relative">
-      <h3 class="text-xl font-bold text-gray-900 mb-2">Chave da API (Google Gemini)</h3>
-      <p class="text-gray-600 text-sm mb-4">
-        Como este aplicativo é 100% arquivo HTML único rodando na sua máquina, ele precisa se conectar diretamente com a IA da Google. Insira sua chave (Google AI Studio) abaixo.
-      </p>
-      <input type="password" id="api-key-input" placeholder="AIzaSy..." class="w-full border border-gray-300 rounded-md px-3 py-2 mb-2 focus:outline-none focus:border-blue-500">
-      <p class="text-xs text-gray-400 mb-6">A chave ficará salva no seu navegador (LocalStorage).</p>
-      <div class="flex gap-2 justify-end">
-        <button onclick="document.getElementById('api-modal').style.display='none'" class="py-2 px-4 bg-gray-100 text-gray-700 font-medium rounded-md hover:bg-gray-200 transition">Cancelar</button>
-        <button onclick="saveApiKey()" class="py-2 px-4 bg-blue-600 text-white font-medium rounded-md hover:bg-blue-700 transition">Salvar Chave</button>
+        )}
       </div>
     </div>
-  </div>
+  );
+}
 
-  <!-- Modal de Carregamento (Spinner) -->
-  <div id="loading-overlay" class="fixed inset-0 bg-white/80 z-50 hidden flex items-center justify-center backdrop-blur-sm hide-print">
-     <div class="flex flex-col items-center bg-white p-6 rounded-2xl shadow-xl border border-gray-100">
-       <svg class="w-12 h-12 text-blue-600 animate-spin mb-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 2v4m0 12v4M4.93 4.93l2.83 2.83m8.48 8.48l2.83 2.83M2 12h4m12 0h4M4.93 19.07l2.83-2.83m8.48-8.48l2.83-2.83"></path></svg>
-       <p class="text-lg font-medium text-gray-800" id="loading-text">Processando arquivo...</p>
-       <p class="text-sm text-gray-500 mt-1" id="loading-subtext"></p>
-     </div>
-  </div>
+function UploadScreen({ onFileLoaded, loading }) {
+  const [dragOver, setDragOver] = useState(false);
 
-  <!-- ===============================
-       NÚCLEO DO PROGRAMA (JAVA SCRIPT)
-       =============================== -->
-  <script>
-    // Estado principal
-    let bookTextBlocks = [];
-    let customApiKey = localStorage.getItem('kdp-apiKey') || '';
-    let abortController = null;
-    let generatedAiHtml = '';
+  const handleFile = (file) => {
+    if (!file) return;
+    if (!file.name.endsWith('.docx')) { alert('Apenas arquivos .docx são suportados.'); return; }
+    onFileLoaded(file);
+  };
 
-    // Verifica se já existe chave salva e preenche
-    if (customApiKey) {
-       document.getElementById('api-key-input').value = customApiKey;
+  return (
+    <div className="upload-screen">
+      <div className="upload-hero">
+        <h1>Diagrame seu <em>livro</em></h1>
+        <p>Transforme seu manuscrito DOCX em um livro impecavelmente formatado e pronto para o Amazon KDP — com inteligência artificial.</p>
+      </div>
+      <div
+        className={`dropzone ${dragOver ? 'drag-over' : ''}`}
+        onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={e => { e.preventDefault(); setDragOver(false); handleFile(e.dataTransfer.files[0]); }}
+      >
+        <input type="file" accept=".docx" onChange={e => handleFile(e.target.files[0])} />
+        {loading ? (
+          <>
+            <div className="dropzone-icon">⏳</div>
+            <h3>Processando manuscrito...</h3>
+            <p>Extraindo estrutura do documento</p>
+          </>
+        ) : (
+          <>
+            <div className="dropzone-icon">📚</div>
+            <h3>Arraste seu manuscrito aqui</h3>
+            <p>Arquivo Word (.docx) — ou clique para selecionar</p>
+            <div className="choose-btn">📁 Escolher arquivo DOCX</div>
+          </>
+        )}
+      </div>
+      <p style={{fontSize:12,color:'var(--ink-light)',marginTop:16,textAlign:'center'}}>
+        ⚠️ Você precisará de uma chave API do Google Gemini.<br/>
+        Obtenha gratuitamente em <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" style={{color:'var(--teal)'}}>aistudio.google.com</a>
+      </p>
+    </div>
+  );
+}
+
+function ApiKeyModal({ onClose, apiKey, setApiKey }) {
+  const [local, setLocal] = useState(apiKey);
+  return (
+    <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="modal">
+        <button className="modal-close" onClick={onClose}>✕</button>
+        <h3>🔑 Chave API Gemini</h3>
+        <p>Insira sua chave da API do Google Gemini. Ela é salva apenas no seu navegador (localStorage) e nunca é enviada para terceiros.</p>
+        <p style={{marginBottom:8}}>
+          <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" style={{color:'var(--teal)',fontSize:13}}>
+            → Obter chave gratuita no Google AI Studio
+          </a>
+        </p>
+        <input
+          type="password"
+          placeholder="AIzaSy..."
+          value={local}
+          onChange={e => setLocal(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') { setApiKey(local.trim()); localStorage.setItem('kdp-apiKey', local.trim()); onClose(); }}}
+        />
+        <p className="info-text">A cota gratuita do Gemini 2.5 Flash é generosa e suficiente para a maioria dos livros.</p>
+        <div className="modal-actions">
+          <button className="btn btn-outline" style={{width:'auto',padding:'7px 14px'}}
+            onClick={() => { setApiKey(''); localStorage.removeItem('kdp-apiKey'); setLocal(''); onClose(); }}>
+            Limpar
+          </button>
+          <button className="btn btn-primary" style={{width:'auto',padding:'7px 18px'}}
+            onClick={() => { setApiKey(local.trim()); localStorage.setItem('kdp-apiKey', local.trim()); onClose(); }}>
+            Salvar
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ErrorModal({ msg, onClose }) {
+  return (
+    <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="modal" style={{textAlign:'center'}}>
+        <button className="modal-close" onClick={onClose}>✕</button>
+        <div className="error-icon-wrap">⚠️</div>
+        <h3>Atenção</h3>
+        <p>{msg}</p>
+        <button className="btn btn-danger" style={{marginTop:16}} onClick={onClose}>Fechar</button>
+      </div>
+    </div>
+  );
+}
+
+function PdfWarningModal({ onClose }) {
+  const openNew = () => {
+    const url = new URL(window.location.href);
+    url.searchParams.set('print', 'true');
+    window.open(url.toString(), '_blank');
+    onClose();
+  };
+  return (
+    <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="modal" style={{textAlign:'center'}}>
+        <button className="modal-close" onClick={onClose}>✕</button>
+        <div style={{fontSize:40,marginBottom:12}}>🔗</div>
+        <h3>Abrir em nova aba</h3>
+        <p>Para salvar o PDF corretamente, o aplicativo precisa abrir em uma aba própria (sem iframes). Clique abaixo e o diálogo de impressão abrirá automaticamente.</p>
+        <button className="btn btn-primary" style={{marginTop:16}} onClick={openNew}>
+          🖨 Continuar e Salvar PDF
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────── MAIN APP ───────────────
+export default function App() {
+  const [config, setConfig] = useState(DEFAULT_CONFIG);
+  const [blocks, setBlocks] = useState(null);
+  const [aiHtml, setAiHtml] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [processedIndex, setProcessedIndex] = useState(0);
+  const [apiKey, setApiKey] = useState('');
+  const [errorMsg, setErrorMsg] = useState(null);
+  const [showApiModal, setShowApiModal] = useState(false);
+  const [showPdfWarning, setShowPdfWarning] = useState(false);
+  const abortRef = useRef(null);
+
+  // Restore from IDB
+  useEffect(() => {
+    (async () => {
+      const savedKey = localStorage.getItem('kdp-apiKey') || '';
+      setApiKey(savedKey);
+
+      const b = await idbSafe.get('kdp-blocks');
+      if (b) setBlocks(b);
+      const h = await idbSafe.get('kdp-aiHtml');
+      if (h) {
+        setAiHtml(h);
+        if (window.location.search.includes('print=true')) {
+          setTimeout(() => window.print(), 1500);
+        }
+      }
+      const p = await idbSafe.get('kdp-processedIndex');
+      if (p != null) setProcessedIndex(p);
+    })();
+  }, []);
+
+  useEffect(() => { if (blocks) idbSafe.set('kdp-blocks', blocks); }, [blocks]);
+  useEffect(() => { if (aiHtml !== null) idbSafe.set('kdp-aiHtml', aiHtml); }, [aiHtml]);
+  useEffect(() => { idbSafe.set('kdp-processedIndex', processedIndex); }, [processedIndex]);
+
+  const handleFileLoaded = async (file) => {
+    try {
+      setLoading(true);
+      const parsed = await parseDocx(file);
+      setBlocks(parsed);
+      setAiHtml(null);
+      setProcessedIndex(0);
+    } catch (e) {
+      console.error(e);
+      setErrorMsg('Erro ao ler o DOCX. Certifique-se de que é um documento Word válido (.docx).');
+    } finally {
+      setLoading(false);
     }
+  };
 
-    // Função para salvar a chave da API do modal
-    function saveApiKey() {
-      const val = document.getElementById('api-key-input').value.trim();
-      customApiKey = val;
-      if (val) {
-          localStorage.setItem('kdp-apiKey', val);
+  const requireApiKey = () => {
+    if (!apiKey) {
+      setShowApiModal(true);
+      return false;
+    }
+    return true;
+  };
+
+  const handleDiagram = useCallback(async (userPrompt = '', startIdx = 0, baseHtml = '') => {
+    if (!blocks) return;
+    if (!requireApiKey()) return;
+
+    if (abortRef.current) abortRef.current.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    try {
+      setAiLoading(true);
+      setErrorMsg(null);
+
+      let streamedData = baseHtml;
+      let pageOffset = 1;
+
+      if (startIdx === 0) {
+        setAiHtml('');
+        streamedData = '';
+        setProcessedIndex(0);
       } else {
-          localStorage.removeItem('kdp-apiKey');
+        const matchArr = (baseHtml || aiHtml || '').match(/<article/gi);
+        pageOffset = matchArr ? matchArr.length + 1 : 1;
+        streamedData = baseHtml || aiHtml || '';
       }
-      document.getElementById('api-modal').style.display = 'none';
-      
-      // Se tivermos um livro carregado e ainda não geramos nada, inicie
-      if (bookTextBlocks.length > 0 && !generatedAiHtml) {
-          startDiagramming(); 
+
+      const CHUNK_SIZE = 25;
+
+      for (let i = startIdx; i < blocks.length; i += CHUNK_SIZE) {
+        if (controller.signal.aborted) return;
+        setProcessedIndex(i);
+
+        const chunk = blocks.slice(i, i + CHUNK_SIZE);
+        const rawText = chunk.map(b => b.text).join('\n\n');
+        const sysPrompt = buildDiagramSystem(config, pageOffset, userPrompt);
+
+        let chunkHtml = '';
+        await geminiStream(
+          apiKey,
+          sysPrompt,
+          `Texto Original para Diagramar:\n\n${rawText}`,
+          text => {
+            chunkHtml += text;
+            streamedData += text;
+            setAiHtml(streamedData);
+          },
+          controller.signal
+        );
+
+        const matchArr = chunkHtml.match(/<article/gi);
+        pageOffset += matchArr ? matchArr.length : 0;
+        setProcessedIndex(Math.min(i + CHUNK_SIZE, blocks.length));
+
+        if (i + CHUNK_SIZE < blocks.length) {
+          await new Promise(r => setTimeout(r, 1500));
+        }
       }
+
+      setProcessedIndex(blocks.length);
+    } catch (e) {
+      if (e.name === 'AbortError') return;
+      console.error(e);
+      setErrorMsg(e.message || 'Erro na diagramação por IA.');
+    } finally {
+      if (abortRef.current === controller) setAiLoading(false);
     }
+  }, [blocks, config, apiKey, aiHtml]);
 
-    // Interface (Overlay) de carregamento
-    function showLoading(text, subtext = "") {
-       document.getElementById('loading-text').innerText = text;
-       document.getElementById('loading-subtext').innerText = subtext;
-       document.getElementById('loading-overlay').style.display = 'flex';
+  const handleResume = useCallback(() => {
+    handleDiagram('', processedIndex, aiHtml || '');
+  }, [handleDiagram, processedIndex, aiHtml]);
+
+  const handleApplyCorrection = useCallback(async (userPrompt) => {
+    if (!aiHtml || !userPrompt.trim()) return;
+    if (!requireApiKey()) return;
+
+    if (abortRef.current) abortRef.current.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    try {
+      setAiLoading(true);
+      setErrorMsg(null);
+
+      const result = await geminiGenerate(
+        apiKey,
+        buildCorrectionSystem(),
+        `HTML Atual:\n\n${aiHtml}\n\nInstrução de Correção:\n${userPrompt}\n\nAplique a correção e retorne o HTML completo modificado.`,
+        controller.signal
+      );
+
+      const cleaned = result.replace(/```html/g, '').replace(/```/g, '').trim();
+      setAiHtml(cleaned);
+      // After correction, resume from where we were
+      const matchArr = cleaned.match(/<article/gi);
+      const pagesGenerated = matchArr ? matchArr.length : 0;
+      // Keep processedIndex as is — pages are already styled
+    } catch (e) {
+      if (e.name === 'AbortError') return;
+      console.error(e);
+      setErrorMsg(e.message || 'Erro ao aplicar correção.');
+    } finally {
+      if (abortRef.current === controller) setAiLoading(false);
     }
+  }, [aiHtml, apiKey]);
 
-    function hideLoading() {
-       document.getElementById('loading-overlay').style.display = 'none';
+  const handleExportPdf = () => {
+    try {
+      if (window.self !== window.top) { setShowPdfWarning(true); return; }
+      window.print();
+    } catch { setShowPdfWarning(true); }
+  };
+
+  const handleExportDocx = async () => {
+    if (!blocks) return;
+    try {
+      setLoading(true);
+      await exportToDocx(blocks, config);
+    } catch (e) {
+      console.error(e);
+      setErrorMsg('Erro ao gerar DOCX.');
+    } finally {
+      setLoading(false);
     }
+  };
 
-    // Gerenciar seleção e extração do Documento Word
-    async function handleFile(e) {
-       const file = e.target.files[0];
-       if (!file) return;
-       
-       showLoading("Lendo arquivo do Word...", "Isto pode levar alguns segundos dependendo do tamanho.");
-       
-       try {
-           const arrayBuffer = await file.arrayBuffer();
-           // Usa a biblioteca Mammoth para extrair apenas o texto cru, dividindo e ignorando estilos complexos invisíveis.
-           const result = await mammoth.extractRawText({ arrayBuffer });
-           
-           // Divide por parágrafos para mandarmos em "lotes" à Inteligência Artificial depois.
-           bookTextBlocks = result.value.split('\n\n').filter(s => s.trim().length > 0);
-           
-           // Esconde tela do uploader e mostra o editor principal
-           document.getElementById('upload-screen').classList.add('hidden');
-           document.getElementById('editor-screen').classList.remove('hidden');
-           document.getElementById('editor-screen').classList.add('flex');
-           
-           if (!customApiKey) {
-               document.getElementById('api-modal').style.display = 'flex';
-           } else {
-               startDiagramming();
-           }
-       } catch (error) {
-           alert("Houve um erro ao ler o seu arquivo Word. Mensagem técnica: " + error.message);
-       }
-       hideLoading();
-    }
+  if (!blocks) {
+    return (
+      <div style={{display:'flex',height:'100vh',overflow:'hidden'}}>
+        <UploadScreen onFileLoaded={handleFileLoaded} loading={loading} />
+        {showApiModal && <ApiKeyModal onClose={() => setShowApiModal(false)} apiKey={apiKey} setApiKey={setApiKey} />}
+        {errorMsg && <ErrorModal msg={errorMsg} onClose={() => setErrorMsg(null)} />}
+      </div>
+    );
+  }
 
-    // Disparo da impressora virtual (PDF) do sistema
-    function printPdf() {
-       if(window.self !== window.top && !window.location.search.includes('print=true')) {
-          // Se estivermos dentro da visualização restrita do estúdio
-          alert("Você parece estar visualizando este arquivo dentro de um Iframe. O navegador pode bloquear sua impressão. Recomendamos baixar abrindo este arquivo localmente no seu computador.");
-       }
-       window.print();
-    }
+  return (
+    <div className="app-layout">
+      <SettingsSidebar
+        config={config}
+        setConfig={setConfig}
+        onDiagram={handleDiagram}
+        onResume={handleResume}
+        onApplyCorrection={handleApplyCorrection}
+        onExportPdf={handleExportPdf}
+        onExportDocx={handleExportDocx}
+        aiLoading={aiLoading}
+        blocks={blocks}
+        processedIndex={processedIndex}
+        onOpenApiModal={() => setShowApiModal(true)}
+        onNewFile={() => { setBlocks(null); setAiHtml(null); setProcessedIndex(0); idbSafe.set('kdp-blocks', null); idbSafe.set('kdp-aiHtml', null); idbSafe.set('kdp-processedIndex', 0); }}
+      />
+      <BookPreview
+        aiHtml={aiHtml}
+        aiLoading={aiLoading}
+        processedIndex={processedIndex}
+        totalCount={blocks.length}
+      />
 
-    // Núcleo: Conecta-se à API Gemini puramente frot-end por Server Sent Events (SSE Streaming)
-    async function startDiagramming() {
-       if (!customApiKey) {
-           document.getElementById('api-modal').style.display = 'flex';
-           return;
-       }
+      {aiLoading && (
+        <div className="loading-toast">
+          <div className="spinner" />
+          <span>IA diagramando... {blocks ? Math.round((Math.max(processedIndex, 1) / blocks.length) * 100) : 0}%</span>
+        </div>
+      )}
 
-       const promptUser = document.getElementById('ai-prompt').value;
-       const btnContent = document.getElementById('btn-diagramar');
-       
-       // Permitir interromper o fluxo se clicar novamente
-       if (abortController) {
-           abortController.abort(); 
-       }
-       
-       abortController = new AbortController();
-       const signal = abortController.signal;
+      {showApiModal && <ApiKeyModal onClose={() => setShowApiModal(false)} apiKey={apiKey} setApiKey={setApiKey} />}
+      {showPdfWarning && <PdfWarningModal onClose={() => setShowPdfWarning(false)} />}
+      {errorMsg && <ErrorModal msg={errorMsg} onClose={() => setErrorMsg(null)} />}
 
-       // Reseta toda a visualização do livro da sessão passada
-       generatedAiHtml = '';
-       document.getElementById('preview-placeholder').style.display = 'none';
-       document.getElementById('preview-content').innerHTML = '';
-       btnContent.innerText = 'Interromper e Recomeçar IA';
-       btnContent.classList.replace('bg-blue-600', 'bg-red-600');
-       btnContent.classList.replace('hover:bg-blue-700', 'hover:bg-red-700');
-       
-       // Instruções críticas (System Prompt) para a IA retornar código HTML impecável com estilos Inline.
-       const systemInstruction = `Você é um designer gráfico editorial experiente e programador expert em HTML e CSS.
-O usuário te enviará fragmentos crus do livro dele, parágrafo por parágrafo.
-Sua missão: Diagramar maravilhosamente este conteúdo para impressão gerando tags '<article>' perfeitamente formatadas usando CSS Inline ('style="..."').
+      {loading && (
+        <div style={{position:'fixed',inset:0,background:'rgba(255,255,255,0.8)',zIndex:300,display:'flex',alignItems:'center',justifyContent:'center',backdropFilter:'blur(4px)'}}>
+          <div style={{textAlign:'center'}}>
+            <div className="spinner" style={{width:40,height:40,borderWidth:4,margin:'0 auto 16px'}} />
+            <p style={{fontFamily:'Playfair Display',fontSize:16,color:'var(--ink)'}}>Processando...</p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
-REGRAS RÍGIDAS DE OURO:
-1. NUNCA. JAMAIS mude nenhuma palavra do corpo do texto original fornecido!! O texto é sagrado.
-2. Cada página do livro que você montar DEVE ser inserida em uma estrutura exata assim:
-<article style="page-break-after: always; width: 6in; min-height: 9in; padding: 0.75in; box-sizing: border-box; background: white; margin: 0 auto; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1); border: 1px solid #d1d5db; overflow: hidden; position: relative; color: #111; text-align: justify; line-height: 1.45; font-size: 11pt; font-family: 'Georgia', serif;">
-
-3. Você precisa CAPTURAR grandes blocos de texto por vez na página antes de fechar o </article>. NÃO FAÇA PÁGINAS COM APENAS UM PARÁGRAFO PARA CONTINUAÇÕES (Tente acumular várias palavras para fechar \~90% da página antes de abrir a próxima).
-4. No final do texto e ANTES de fechar a tag </article>, você DEVE criar a numeração da página:
-<div style="position: absolute; bottom: 0.4in; left: 0; width: 100%; text-align: center; font-size: 9pt; color: #666;">- 1 -</div> (Você pode abstrair e apenas numerar de forma corrida a página atual caso não tenha o contador global das chamadas).
-5. Títulos h1 (início de capítulo): Use 'text-align: center; font-size: 24pt; margin-top: 1in; margin-bottom: 0.5in;'.
-6. NADA DE MARKDOWN GERAL: Não embrulhe sua resposta com marcadores markdown como \`\`\`html. O que você escrever será exposto imediatamente ao DOM da página, retorne apenas o código cru!
-7. Considere o prompt EXTRA que o usuário mandou, caso exista.`;
-
-       showLoading("Iniciando Diagramação com IA...", "Aguarde enquanto os estilos e formatos começam a ser gerados em tempo real.");
-
-       try {
-           // Quebra o livro em lotes para não atingir o limite de tokens das requisições e pra mostrar o andamento contínuo da digitação (streaming).
-           const chunkSize = 20; 
-
-           for (let i = 0; i < bookTextBlocks.length; i += chunkSize) {
-               
-               // Monta o trecho deste lote
-               const chunkBlocks = bookTextBlocks.slice(i, i + chunkSize);
-               const rawText = chunkBlocks.join('\\n\\n');
-
-               // Dispara a chamada ao EndPoint REST SSE do Gemini 2.5 Flash
-               const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:streamGenerateContent?alt=sse&key=${customApiKey}`, {
-                   method: 'POST',
-                   headers: { 'Content-Type': 'application/json' },
-                   signal: signal,
-                   body: JSON.stringify({
-                       contents: [{ role: 'user', parts: [{ text: "Prompt opcional do usuário: " + promptUser + "\\n\\nTEXTO PARA DIAGRAMAR (NÃO MUDE AS PALAVRAS):\\n" + rawText }] }],
-                       systemInstruction: { parts: [{ text: systemInstruction }] },
-                       generationConfig: { temperature: 0.3 }
-                   })
-               });
-
-               hideLoading(); // Oculte a tela de carregamento, vamos iniciar a plotagem
-
-               if (!res.ok) {
-                   const errInfo = await res.json().catch(()=>({}));
-                   throw new Error(errInfo.error?.message || "Ocorreu um erro ao comunicar-se com a API do Google Gemini. Sua chave é válida?");
-               }
-
-               // Lê a Stream de respostas SSE byte por byte à medida que o ChatGPT/Gemini responde.
-               const reader = res.body.getReader();
-               const decoder = new TextDecoder("utf8");
-
-               while (true) {
-                   const { done, value } = await reader.read();
-                   if (done) break;
-                   
-                   // Decodifica a corrente e separa cada linha do retorno SSE
-                   const lines = decoder.decode(value).split('\\n');
-                   for (const line of lines) {
-                       if (line.startsWith('data: ')) {
-                           try {
-                               // Desencapsula a string contendo JSON do Google
-                               const data = JSON.parse(line.substring(6));
-                               if (data.candidates && data.candidates[0].content) {
-                                   const text = data.candidates[0].content.parts[0].text;
-                                   
-                                   // Limpa marcações bobas em markdown para garantir html puro
-                                   const cleanedText = text.replace(/\`\`\`html/gi, '').replace(/\`\`\`/g, '');
-                                   
-                                   generatedAiHtml += cleanedText;
-                                   
-                                   // Plota diretamente na janela da direita
-                                   document.getElementById('preview-content').innerHTML = generatedAiHtml;
-
-                                   // Mantém o scroll descendo se estiver focado embaixo (Opcional, omitido p/ fluidez natural)
-                               }
-                           } catch (e) {
-                              console.warn("Retorno parcial ignorado.", e);
-                           }
-                       }
-                   }
-               }
-           }
-       } catch (e) {
-           if (e.name === 'AbortError') {
-              console.log('Interrompido manualmente.');
-              return;
-           }
-           hideLoading();
-           alert("Diagramação Interrompida ou Erro: " + e.message);
-       } finally {
-           // Concluído ou Cancelado: Volta o Botão para estado original
-           btnContent.innerText = 'Diagramar com IA (Recriar)';
-           btnContent.classList.replace('bg-red-600', 'bg-blue-600');
-           btnContent.classList.replace('hover:bg-red-700', 'hover:bg-blue-700');
-       }
-    }
-
-    // Lida com atalho cmd+p ou auto impressão vindo de URL query parameter, já que a restrição de impressão do AI Studio impedia isso!
-    window.addEventListener('DOMContentLoaded', () => {
-       if (window.location.search.includes('print=true')) {
-          setTimeout(() => window.print(), 1000);
-       }
-    });
-
-  </script>
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(<App />);
+</script>
 </body>
 </html>
