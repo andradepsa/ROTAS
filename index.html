@@ -18,11 +18,19 @@
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400&family=EB+Garamond:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
+
 <style>
+/* ═══════════════════════════════════════════════
+   APP SHELL
+═══════════════════════════════════════════════ */
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:system-ui,sans-serif;background:#e8e4df;height:100vh;overflow:hidden}
 #root{height:100vh;display:flex;flex-direction:column}
 .app{display:flex;height:100vh;overflow:hidden}
+
+/* ═══════════════════════════════════════════════
+   SIDEBAR
+═══════════════════════════════════════════════ */
 .sb{width:272px;background:#1c1c1e;color:#f5f5f0;display:flex;flex-direction:column;flex-shrink:0;height:100vh;overflow:hidden}
 .sb-head{padding:18px 16px 14px;border-bottom:1px solid #333}
 .sb-logo{font-family:'Playfair Display',serif;font-size:17px;font-weight:900;letter-spacing:-0.3px;color:#f5f5f0}
@@ -32,21 +40,29 @@ body{font-family:system-ui,sans-serif;background:#e8e4df;height:100vh;overflow:h
 .sb-body{flex:1;overflow-y:auto;padding:12px}
 .sb-body::-webkit-scrollbar{width:4px}
 .sb-body::-webkit-scrollbar-thumb{background:#444;border-radius:2px}
+
+/* sections */
 .sec{margin-bottom:12px;background:#262628;border-radius:8px;overflow:hidden}
-.sec-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#888;padding:10px 12px 6px}
+.sec-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#888;padding:10px 12px 6px}
 .sec-body{padding:0 12px 12px;display:flex;flex-direction:column;gap:6px}
+
+/* field */
 .f-row{display:flex;align-items:center;gap:8px}
 .f-label{font-size:11px;color:#aaa;width:72px;flex-shrink:0}
 .f-input{flex:1;background:#1c1c1e;border:1px solid #3a3a3c;border-radius:5px;padding:4px 8px;font-size:12px;color:#f5f5f0;outline:none;font-family:inherit}
 .f-input:focus{border-color:#c9884e}
 select.f-input{cursor:pointer}
+
+/* toggle */
 .tog-row{display:flex;align-items:center;justify-content:space-between}
 .tog-label{font-size:11px;color:#aaa}
 .tog{width:30px;height:17px;background:#3a3a3c;border-radius:9px;position:relative;cursor:pointer;border:none;transition:background .2s;flex-shrink:0}
 .tog.on{background:#c9884e}
 .tog::after{content:'';position:absolute;width:13px;height:13px;background:#fff;border-radius:50%;top:2px;left:2px;transition:left .18s}
 .tog.on::after{left:15px}
-.btn{display:flex;align-items:center;justify-content:center;gap:5px;width:100%;padding:8px 12px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;border:none;transition:all .15s;font-family:inherit;letter-spacing:.01em}
+
+/* buttons */
+.btn{display:flex;align-items:center;justify-content:center;gap:5px;width:100%;padding:8px 12px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;border:none;transition:all .15s;font-family:inherit;letter-spacing:0.01em}
 .btn:disabled{opacity:.4;cursor:not-allowed}
 .btn-gold{background:#c9884e;color:#fff}
 .btn-gold:hover:not(:disabled){background:#b8773f}
@@ -56,68 +72,219 @@ select.f-input{cursor:pointer}
 .btn-ghost:hover:not(:disabled){background:#262628;color:#f5f5f0}
 .btn-red{background:#7f1d1d;color:#fca5a5}
 .btn-red:hover:not(:disabled){background:#991b1b}
+
+/* progress */
 .prog-wrap{background:#3a3a3c;border-radius:99px;height:4px;overflow:hidden;margin-top:2px}
 .prog-fill{height:100%;background:#c9884e;border-radius:99px;transition:width .4s}
 .prog-label{display:flex;justify-content:space-between;font-size:10px;color:#888;margin-bottom:3px}
+
+/* ai textarea */
 .ai-ta{width:100%;background:#1c1c1e;border:1px solid #3a3a3c;border-radius:6px;padding:8px 10px;font-size:12px;color:#f5f5f0;font-family:inherit;resize:vertical;min-height:72px;outline:none;line-height:1.5}
 .ai-ta:focus{border-color:#c9884e}
 .ai-ta::placeholder{color:#555}
+
+/* divider */
 .div{height:1px;background:#333;margin:4px 0}
+
+/* ═══════════════════════════════════════════════
+   PREVIEW AREA
+═══════════════════════════════════════════════ */
 .pv{flex:1;display:flex;flex-direction:column;background:#d6d1cb;overflow:hidden}
 .pv-bar{height:44px;background:#fff;border-bottom:1px solid #ddd;display:flex;align-items:center;justify-content:space-between;padding:0 18px;flex-shrink:0;z-index:5}
 .pv-bar-title{font-size:13px;font-weight:600;color:#666;font-family:'Playfair Display',serif}
 .pv-scroll{flex:1;overflow-y:auto;padding:28px 20px;display:flex;flex-direction:column;align-items:center;gap:32px}
 .pv-scroll::-webkit-scrollbar{width:6px}
 .pv-scroll::-webkit-scrollbar-thumb{background:#bbb;border-radius:3px}
-/* PAGE WRAPPER */
-.pg-wrap{background:#fff;box-shadow:0 4px 24px rgba(0,0,0,.18);flex-shrink:0;overflow:hidden;position:relative}
-.pg-wrap.ov{box-shadow:0 0 0 3px #ef4444,0 4px 24px rgba(0,0,0,.18)}
-.pg-wrap.ov::after{content:'⚠ texto excedente';position:absolute;bottom:-20px;left:0;right:0;text-align:center;font-size:10px;color:#ef4444;font-weight:700}
-/* ══ BOOK PAGE CSS — ZERO TOKENS ══
-   Todo estilo tipográfico vive aqui.
-   A IA só emite tags — o CSS faz o resto. */
+
+/* ═══════════════════════════════════════════════
+   BOOK PAGE — O CSS QUE SUBSTITUI TOKENS DA IA
+   Tudo que é "padrão" está aqui. Zero tokens gastos.
+═══════════════════════════════════════════════ */
+
+/* Wrapper de página no preview */
+.pg-wrap{background:#fff;box-shadow:0 4px 24px rgba(0,0,0,.18);flex-shrink:0;overflow:hidden;font-size:11.5pt;line-height:1.55;position:relative}
+/* Indicador visual de overflow — borda vermelha se conteúdo exceder a altura da página */
+.pg-wrap.overflow-warn{box-shadow:0 0 0 3px #ef4444, 0 4px 24px rgba(0,0,0,.18)}
+.pg-wrap.overflow-warn::after{content:'⚠ Página com texto excedente';position:absolute;bottom:-22px;left:0;right:0;text-align:center;font-size:10px;color:#ef4444;font-family:system-ui,sans-serif;font-weight:600;letter-spacing:.02em}
+
+/* A tag <page> gerada pela IA — dimensões em px = 6×9" @ 96dpi */
 page{
   display:block;
-  width:576px;height:864px;min-height:864px;
-  padding:77px 58px 77px 72px;
+  width:576px;           /* 6in × 96dpi */
+  height:864px;          /* 9in × 96dpi — FIXO para screenshot 1:1 */
+  min-height:864px;
+  padding:77px 58px 77px 72px; /* 0.8in top/bot, 0.6in right, 0.75in left (gutter) */
   position:relative;
-  background:#fff;color:#111;
-  overflow:visible;
+  background:#fff;
+  color:#111;
+  overflow:visible;      /* visible: texto excedente fica visível no preview (evita corte silencioso) */
   font-family:'EB Garamond',Georgia,serif;
-  font-size:11.5pt;line-height:1.55;
+  font-size:11.5pt;
+  line-height:1.55;
   box-sizing:border-box;
 }
-page p{text-align:justify;text-indent:1.8em;margin:0;orphans:3;widows:3;hyphens:auto}
+
+/* Elementos tipográficos — CSS puro, zero tokens */
+page p{
+  text-align:justify;
+  text-indent:1.8em;
+  margin:0;
+  orphans:3;
+  widows:3;
+  hyphens:auto;
+}
 page p.no-indent{text-indent:0}
 page p.center{text-align:center;text-indent:0}
 page p.ornament{text-align:center;text-indent:0;color:#888;letter-spacing:.2em;font-size:10pt;margin:10px 0}
+
+/* Capítulo — página própria */
 page.chapter-page{padding-top:140px}
-page h1{font-family:'Playfair Display',serif;font-size:22pt;font-weight:900;text-align:center;margin:0 0 6px;letter-spacing:-.5px;line-height:1.15;color:#1a1a1a}
-page .chapter-num{font-family:'EB Garamond',serif;font-size:10pt;text-align:center;letter-spacing:.25em;text-transform:uppercase;color:#999;margin-bottom:18px;display:block}
-page .chapter-rule{width:36px;height:1.5px;background:#c9884e;margin:18px auto 32px;display:block}
-page h2{font-family:'Playfair Display',serif;font-size:13pt;font-weight:700;text-align:center;margin:28px 0 10px;color:#1a1a1a}
-page h3{font-family:'EB Garamond',serif;font-size:11pt;font-weight:500;font-style:italic;text-align:center;margin:20px 0 8px;color:#555}
-page blockquote{margin:24px 24px 24px 28px;font-style:italic;color:#444;font-size:10.5pt;line-height:1.6;border-left:2px solid #c9884e;padding-left:14px;text-indent:0}
-page blockquote cite{display:block;font-style:normal;font-size:9.5pt;color:#888;margin-top:6px;text-align:right}
-page .epigraph{margin:32px 40px 40px;font-style:italic;color:#555;font-size:10pt;line-height:1.65;text-align:center;text-indent:0}
-page .epigraph cite{display:block;font-style:normal;font-size:9pt;color:#888;margin-top:8px}
-page p.dropcap::first-letter{font-family:'Playfair Display',serif;font-size:3.8em;font-weight:900;float:left;line-height:.78;margin-right:.06em;margin-top:.04em;color:#1a1a1a}
-page .pgnum{display:none}
-page.toc-page{padding-top:100px}
-page.toc-page h2{font-family:'Playfair Display',serif;font-size:18pt;font-weight:700;text-align:center;margin:0 0 32px;color:#1a1a1a;letter-spacing:-.3px}
-page .runhead{position:absolute;top:26px;left:0;right:0;text-align:center;font-size:8.5pt;color:#bbb;font-family:'EB Garamond',serif;font-style:italic;letter-spacing:.04em}
-page.chapter-page .runhead,page.toc-page .runhead,page.title-page .runhead,page.copyright-page .runhead{display:none}
-page .toc-entry{display:flex;justify-content:space-between;align-items:baseline;font-size:10.5pt;margin-bottom:6px;text-indent:0}
+page h1{
+  font-family:'Playfair Display',serif;
+  font-size:22pt;
+  font-weight:900;
+  text-align:center;
+  margin:0 0 6px 0;
+  letter-spacing:-0.5px;
+  line-height:1.15;
+  color:#1a1a1a;
+}
+page .chapter-num{
+  font-family:'EB Garamond',serif;
+  font-size:10pt;
+  text-align:center;
+  letter-spacing:.25em;
+  text-transform:uppercase;
+  color:#999;
+  margin-bottom:18px;
+}
+page .chapter-rule{
+  width:36px;height:1.5px;background:#c9884e;
+  margin:18px auto 32px;
+  display:block;
+}
+page h2{
+  font-family:'Playfair Display',serif;
+  font-size:13pt;
+  font-weight:700;
+  text-align:center;
+  margin:28px 0 10px;
+  color:#1a1a1a;
+}
+page h3{
+  font-family:'EB Garamond',serif;
+  font-size:11pt;
+  font-weight:500;
+  font-style:italic;
+  text-align:center;
+  margin:20px 0 8px;
+  color:#555;
+}
+
+/* Citações epígrafe */
+page blockquote{
+  margin:24px 24px 24px 28px;
+  font-style:italic;
+  color:#444;
+  font-size:10.5pt;
+  line-height:1.6;
+  border-left:2px solid #c9884e;
+  padding-left:14px;
+  text-indent:0;
+}
+page blockquote cite{
+  display:block;
+  font-style:normal;
+  font-size:9.5pt;
+  color:#888;
+  margin-top:6px;
+  text-align:right;
+}
+page .epigraph{
+  margin:32px 40px 40px;
+  font-style:italic;
+  color:#555;
+  font-size:10pt;
+  line-height:1.65;
+  text-align:center;
+  text-indent:0;
+}
+page .epigraph cite{
+  display:block;
+  font-style:normal;
+  font-size:9pt;
+  color:#888;
+  margin-top:8px;
+}
+
+/* Drop cap */
+page p.dropcap::first-letter{
+  font-family:'Playfair Display',serif;
+  font-size:3.8em;
+  font-weight:900;
+  float:left;
+  line-height:.78;
+  margin-right:.06em;
+  margin-top:.04em;
+  color:#1a1a1a;
+}
+
+/* Número de página — oculto no preview e PDF
+   (Amazon KDP numera automaticamente no upload) */
+page .pgnum{ display:none; }
+
+/* Página de sumário */
+page.toc-page{ padding-top:100px; }
+page.toc-page h2{
+  font-family:'Playfair Display',serif;
+  font-size:18pt;
+  font-weight:700;
+  text-align:center;
+  margin:0 0 32px 0;
+  color:#1a1a1a;
+  letter-spacing:-0.3px;
+}
+
+/* Running head */
+page .runhead{
+  position:absolute;
+  top:26px;left:0;right:0;
+  text-align:center;
+  font-size:8.5pt;
+  color:#bbb;
+  font-family:'EB Garamond',serif;
+  font-style:italic;
+  letter-spacing:.04em;
+}
+page.chapter-page .runhead{display:none}
+page.toc-page .runhead{display:none}
+page.title-page .runhead{display:none}
+page.copyright-page .runhead{display:none}
+
+/* Sumário */
+page .toc-entry{
+  display:flex;
+  justify-content:space-between;
+  align-items:baseline;
+  font-size:10.5pt;
+  margin-bottom:6px;
+  text-indent:0;
+}
 page .toc-entry .toc-dots{flex:1;border-bottom:1px dotted #ccc;margin:0 6px;position:relative;top:-3px}
 page .toc-entry.toc-part{font-weight:700;font-family:'Playfair Display',serif;margin-top:14px;font-size:11pt}
 page .toc-entry.toc-cap{padding-left:14px;color:#444}
+
+/* Página especial (título, copyright) */
 page.title-page{padding-top:160px;text-align:center}
 page.title-page h1{font-size:30pt;margin-bottom:8px}
 page.title-page .subtitle{font-style:italic;color:#666;font-size:12pt;margin-bottom:48px}
 page.title-page .author{font-family:'Playfair Display',serif;font-size:14pt;font-weight:700;color:#333}
 page.copyright-page{padding-top:200px;font-size:9pt;color:#666;line-height:1.8}
 page.copyright-page p{text-indent:0;text-align:center}
-/* UPLOAD */
+
+/* ═══════════════════════════════════════════════
+   UPLOAD SCREEN
+═══════════════════════════════════════════════ */
 .up-screen{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#f5f2ee;padding:40px}
 .up-hero{text-align:center;margin-bottom:36px}
 .up-hero h1{font-family:'Playfair Display',serif;font-size:44px;font-weight:900;color:#1c1c1e;letter-spacing:-2px;line-height:1;margin-bottom:10px}
@@ -132,7 +299,10 @@ page.copyright-page p{text-indent:0;text-align:center}
 .dz-btn{display:inline-flex;align-items:center;gap:6px;background:#1c1c1e;color:#fff;font-size:13px;font-weight:600;padding:9px 20px;border-radius:8px;border:none;pointer-events:none}
 .up-note{font-size:11px;color:#999;margin-top:14px;text-align:center;line-height:1.6}
 .up-note a{color:#c9884e}
-/* MODALS */
+
+/* ═══════════════════════════════════════════════
+   MODALS
+═══════════════════════════════════════════════ */
 .overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);backdrop-filter:blur(4px);z-index:200;display:flex;align-items:center;justify-content:center;padding:16px}
 .modal{background:#fff;border-radius:14px;padding:26px;max-width:420px;width:100%;position:relative;box-shadow:0 20px 60px rgba(0,0,0,.25)}
 .modal h3{font-family:'Playfair Display',serif;font-size:19px;font-weight:700;color:#1c1c1e;margin-bottom:10px}
@@ -146,17 +316,29 @@ page.copyright-page p{text-indent:0;text-align:center}
 .link{color:#c9884e;text-decoration:none;font-size:12px}
 .link:hover{text-decoration:underline}
 .err-icon{width:44px;height:44px;background:#fee2e2;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:20px;margin:0 auto 10px}
+
+/* toast */
 .toast{position:fixed;bottom:20px;right:20px;background:#1c1c1e;color:#f5f5f0;padding:10px 18px;border-radius:40px;font-size:12px;font-weight:600;display:flex;align-items:center;gap:9px;box-shadow:0 8px 32px rgba(0,0,0,.3);z-index:100;animation:tin .25s ease}
 @keyframes tin{from{transform:translateY(16px);opacity:0}to{transform:translateY(0);opacity:1}}
+
+/* spinner */
 .spin{width:14px;height:14px;border:2px solid rgba(255,255,255,.25);border-top-color:#fff;border-radius:50%;animation:s .65s linear infinite}
 @keyframes s{to{transform:rotate(360deg)}}
 .spin-dark{border-color:rgba(201,136,78,.25);border-top-color:#c9884e}
+
+/* empty */
 .empty{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;text-align:center;padding:40px;color:#888}
 .empty-icon{font-size:56px;margin-bottom:16px;animation:fl 3s ease-in-out infinite}
 @keyframes fl{0%,100%{transform:translateY(0)}50%{transform:translateY(-7px)}}
 .empty h3{font-family:'Playfair Display',serif;font-size:18px;font-weight:700;color:#555;margin-bottom:8px}
 .empty p{font-size:13px;line-height:1.5;max-width:280px}
+
+/* loading overlay */
 .load-overlay{position:fixed;inset:0;background:rgba(255,255,255,.85);z-index:300;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(3px)}
+
+/* ═══════════════════════════════════════════════
+   PRINT
+═══════════════════════════════════════════════ */
 @media print{
   .sb,.pv-bar,.toast,.overlay,.load-overlay{display:none!important}
   body,html{height:auto;overflow:visible;background:#fff}
@@ -168,51 +350,55 @@ page.copyright-page p{text-indent:0;text-align:center}
   page p{-webkit-hyphens:auto;hyphens:auto}
 }
 </style>
-<style id="trim-style">page{width:576px;height:864px;min-height:864px;}</style>
+<style id="trim-style">
+/* Padrão 6x9 — sobrescrito via JS ao trocar o tamanho */
+page{width:576px;height:864px;min-height:864px;}
+</style>
 </head>
 <body>
 <div id="root"></div>
-<script type="text/babel">
-const{useState,useRef,useEffect,useMemo,useCallback}=React;
 
+<script type="text/babel">
+const {useState,useRef,useEffect,useMemo,useCallback}=React;
+
+/* ═══ CONSTANTS ═══ */
 const TRIM={
-  '6x9'    :{name:'6" × 9" (KDP padrão)',  w:6,   h:9,    pw:576, ph:864,  cap:370},
-  '5.5x8.5':{name:'5.5" × 8.5"',          w:5.5, h:8.5,  pw:528, ph:816,  cap:340},
-  '5x8'    :{name:'5" × 8"',              w:5,   h:8,    pw:480, ph:768,  cap:310},
-  'A4'     :{name:'A4 (21×29.7cm)',        w:8.27,h:11.69,pw:794, ph:1123, cap:520},
+  '6x9'    :{name:'6" × 9" (KDP padrão)',  w:6,    h:9,     pw:576,  ph:864},
+  '5.5x8.5':{name:'5.5" × 8.5"',           w:5.5,  h:8.5,   pw:528,  ph:816},
+  '5x8'    :{name:'5" × 8"',               w:5,    h:8,     pw:480,  ph:768},
+  'A4'     :{name:'A4 (21×29.7cm)',         w:8.27, h:11.69, pw:794,  ph:1123},
 };
 
-const DEF={trimSize:'6x9',fontFamily:'EB Garamond',title:'',author:'',dropCaps:true,addTitlePage:false,addCopyrightPage:false};
+const DEF={
+  trimSize:'6x9',fontFamily:'EB Garamond',
+  title:'',author:'',
+  dropCaps:true,addTitlePage:false,addCopyrightPage:false,
+};
 
+/* ═══ IDB ═══ */
 const db={
   get:async k=>{try{return window._idbGet?await window._idbGet(k):null}catch{return null}},
   set:async(k,v)=>{try{if(window._idbSet)await window._idbSet(k,v)}catch{}},
 };
 
-/* ════════════════════════════════════════════════════
-   GEMINI STREAM — com auto-retry em rate-limit (429)
-════════════════════════════════════════════════════ */
+/* ═══ GEMINI ═══ */
 const MODEL='gemini-2.5-flash';
 const BASE='https://generativelanguage.googleapis.com/v1beta';
 
-async function gemStream(key,sys,user,onChunk,signal,attempt=0){
+async function gemStream(key,sys,user,onChunk,signal){
   const r=await fetch(`${BASE}/models/${MODEL}:streamGenerateContent?alt=sse&key=${key}`,{
     method:'POST',
     headers:{'Content-Type':'application/json'},
     body:JSON.stringify({
       system_instruction:{parts:[{text:sys}]},
       contents:[{role:'user',parts:[{text:user}]}],
-      generationConfig:{temperature:0.05,maxOutputTokens:8192},
+      generationConfig:{temperature:0.1,maxOutputTokens:8192},
     }),
     signal,
   });
   if(!r.ok){
     const e=await r.json().catch(()=>({}));
-    if(r.status===429&&attempt<3){
-      // backoff exponencial: 15s, 30s, 60s
-      await new Promise(res=>setTimeout(res,15000*(attempt+1)));
-      return gemStream(key,sys,user,onChunk,signal,attempt+1);
-    }
+    if(r.status===429)throw new Error('Rate limit (429). Aguarde e clique em Continuar.');
     throw new Error(e?.error?.message||`HTTP ${r.status}`);
   }
   const rdr=r.body.getReader(),dec=new TextDecoder();
@@ -232,150 +418,218 @@ async function gemStream(key,sys,user,onChunk,signal,attempt=0){
   }
 }
 
-/* ════════════════════════════════════════════════════
-   PRÉ-PAGINADOR LOCAL — o cérebro do sistema
-   
-   IDEIA GENIAL: em vez de mandar 20 blocos para a IA
-   e pedir que ela calcule páginas, o JS já monta as
-   "páginas candidatas" agrupando blocos por word-count.
-   A IA recebe páginas quase prontas e só precisa:
-   1. Converter os blocos em HTML correto
-   2. Confirmar ou ajustar quebras de borda
-   
-   Resultado: ~60% menos tokens, paginação muito mais
-   consistente, e a IA nunca "esquece" a conta.
-════════════════════════════════════════════════════ */
-function prePaginate(blocks, cap=370){
-  // cap = capacidade em palavras por página (vem do TRIM)
-  const CHAPTER_OVERHEAD=60; // padding-top extra da chapter-page
-  const H2_GUARD=60;         // palavras mínimas livres para h2 não ser órfão
-  const pages=[];
-  let cur=[];
-  let used=0;
-
-  const flush=()=>{if(cur.length){pages.push([...cur]);cur=[];used=0;}};
-
-  for(let i=0;i<blocks.length;i++){
-    const b=blocks[i];
-    const wc=b.wc;
-
-    if(b.type==='heading1'){
-      flush();
-      // capítulo sempre começa página nova
-      cur.push(b);used=CHAPTER_OVERHEAD;
-      continue;
-    }
-
-    if(b.type==='heading2'||b.type==='heading3'){
-      // guarda espaço para h2 + pelo menos 2 parágrafos (~60 palavras)
-      if(used+wc+H2_GUARD>cap){flush();}
-      cur.push(b);used+=wc;
-      continue;
-    }
-
-    // bloco normal — verifica se cabe
-    if(used+wc>cap){flush();}
-    cur.push(b);used+=wc;
-  }
-  flush();
-  return pages;
-}
-
-/* ════════════════════════════════════════════════════
-   SYSTEM PROMPT — ultra-compacto
-   
-   PRINCÍPIO: cada byte do prompt custa tokens.
-   A versão anterior tinha ~900 palavras de instruções.
-   Esta tem ~280 — sem perder nenhuma regra essencial.
-   Como? Removemos redundâncias, colapsamos exemplos
-   em tabelas, e tudo que pode ser inferido do HTML
-   de exemplo não é repetido em prosa.
-════════════════════════════════════════════════════ */
-function buildSys(title,userStyle){
-  const rh=title||'—';
-  return `Diagramador editorial KDP. Converta os grupos de blocos abaixo em HTML de <page>.
-
-PROIBIDO: style= | markdown | comentários | classes não listadas | alterar/omitir texto.
-
-ESQUELETO DE PÁGINA NORMAL:
-<page><span class="runhead">${rh}</span>…conteúdo…</page>
-
-CAPÍTULO (heading1):
-<page class="chapter-page">
-<span class="chapter-num">CAPÍTULO N</span>
-<h1>Título</h1><span class="chapter-rule"></span>
-[<div class="epigraph">Frase<cite>— Autor</cite></div>  ← só se houver]
-<p class="dropcap">Primeiro §…</p>
-<p>Demais §…</p></page>
-
-TAGS PERMITIDAS — use exatamente:
-p           → parágrafo normal (recuo via CSS)
-p.no-indent → 1º § após h2/h3/blockquote/epigraph/ornament
-p.dropcap   → SOMENTE o 1º § de cada capítulo (1 por página)
-p.ornament  → separador de cena: <p class="ornament">✦  ✦  ✦</p>
-p.center    → texto centralizado
-h2          → seção; próximo § = no-indent
-h3          → subseção; próximo § = no-indent
-blockquote  → citação: <blockquote>Texto<cite>— Autor</cite></blockquote>
-epigraph    → <div class="epigraph">Texto<cite>— Fonte</cite></div>
-
-PAGINAÇÃO: os blocos já chegam agrupados por página (separados por ═══PAGE═══).
-Cada grupo = uma <page>. Respeite os grupos — NÃO junte nem divida.
-Se um grupo começa com heading1, é chapter-page. Senão, page normal.
-
-SUMÁRIO: <page class="toc-page"><span class="runhead">Sumário</span><h2>Sumário</h2>
-<div class="toc-entry toc-part"><span>PARTE I</span><span class="toc-dots"></span><span>?</span></div>
-<div class="toc-entry toc-cap"><span>Cap 1 — Título</span><span class="toc-dots"></span><span>?</span></div></page>
-(use "?" — números reais são inseridos automaticamente após)
-
-PÁGINAS ESPECIAIS: title-page | copyright-page (sem runhead, todo p = no-indent)
-
-NÃO inclua pgnum — Amazon KDP numera automaticamente.
-${userStyle?`\nESTILO EXTRA: ${userStyle}`:''}
-RETORNE apenas HTML <page>…</page> em sequência. Zero texto fora das tags.`;
-}
-
-/* ════════════════════════════════════════════════════
-   TOC AUTO-NUMBERING + STRIP pgnum
-════════════════════════════════════════════════════ */
+/* ═══ SUMÁRIO — RENUM AUTOMÁTICO ═══
+   Após a IA gerar o HTML completo, esta função:
+   1. Percorre cada <page> e mapeia título → número real
+   2. Reescreve os <div class="toc-entry"> com os números corretos
+   3. Também apaga <span class="pgnum"> de TODAS as páginas
+      (Amazon KDP numera por conta própria)
+═══ */
 function fixTocAndStrip(rawHtml){
-  let html=rawHtml.replace(/<span[^>]*class=["']pgnum["'][^>]*>[\s\S]*?<\/span>/gi,'');
-  const tmp=new DOMParser().parseFromString(`<body>${html}</body>`,'text/html');
-  const pageMap={};
-  tmp.querySelectorAll('page').forEach((pg,idx)=>{
-    const h1=pg.querySelector('h1');
-    if(h1)pageMap[h1.textContent.trim().toLowerCase().replace(/\s+/g,' ')]=idx+1;
-    const cn=pg.querySelector('.chapter-num');
-    if(cn){const k=cn.textContent.trim().toLowerCase().replace(/\s+/g,' ');if(!pageMap[k])pageMap[k]=idx+1;}
+  // --- passo 0: remove TODOS os pgnum (Amazon numera) ---
+  let html = rawHtml.replace(/<span[^>]*class=["']pgnum["'][^>]*>[\s\S]*?<\/span>/gi, '');
+
+  // --- passo 1: mapeia cada capítulo ao número de página real ---
+  // Conta <page abertura em ordem para numerar
+  const pageMap = {};  // chapterTitle (normalizado) → pageNumber
+  let pageNum = 1;
+  const pageRe = /<page(\s[^>]*)?>[\s\S]*?<\/page>/gi;
+  let m;
+  const tempDoc = new DOMParser().parseFromString(`<body>${html}</body>`,'text/html');
+  const allPages = tempDoc.querySelectorAll('page');
+
+  allPages.forEach((pg, idx) => {
+    const num = idx + 1;
+    // Captura o h1 se for chapter-page
+    const h1 = pg.querySelector('h1');
+    if(h1){
+      const key = h1.textContent.trim().toLowerCase().replace(/\s+/g,' ');
+      pageMap[key] = num;
+    }
+    // Também mapeia chapter-num (ex: "CAPÍTULO 3")
+    const cn = pg.querySelector('.chapter-num');
+    if(cn){
+      const key2 = cn.textContent.trim().toLowerCase().replace(/\s+/g,' ');
+      if(!pageMap[key2]) pageMap[key2] = num;
+    }
   });
-  html=html.replace(/(<page[^>]*>)([\s\S]*?toc-entry[\s\S]*?)(<\/page>)/gi,(_,o,body,c)=>{
-    const nb=body.replace(/(<div[^>]*toc-entry[^>]*>)([\s\S]*?)(<\/div>)/gi,(_2,dO,inner,dC)=>{
-      const spans=[...inner.matchAll(/<span[^>]*>([\s\S]*?)<\/span>/gi)];
-      if(!spans.length)return _2;
-      const title=spans[0][1].replace(/<[^>]+>/g,'').trim().toLowerCase().replace(/\s+/g,' ');
-      let found=null;
-      for(const[k,n]of Object.entries(pageMap)){if(k.includes(title)||title.includes(k)){found=n;break;}}
-      if(!found)return _2;
-      return `${dO}${spans[0][0]}<span class="toc-dots"></span><span>${found}</span>${dC}`;
-    });
-    return o+nb+c;
+
+  // --- passo 2: reescreve toc-entry com números reais ---
+  // Localiza a página de sumário (contém toc-entry)
+  // e substitui o último <span> de cada entrada pelo número correto
+  const tocPageRe = /(<page[^>]*>)([\s\S]*?toc-entry[\s\S]*?)(<\/page>)/gi;
+  html = html.replace(tocPageRe, (full, open, body, close) => {
+    const newBody = body.replace(
+      /(<div[^>]*class=["'][^"']*toc-entry[^"']*["'][^>]*>)([\s\S]*?)(<\/div>)/gi,
+      (entryFull, divOpen, inner, divClose) => {
+        // Extrai o título da entrada (primeiro <span>)
+        const spans = [...inner.matchAll(/<span[^>]*>([\s\S]*?)<\/span>/gi)];
+        if(spans.length < 1) return entryFull;
+        const titleText = spans[0][1].replace(/<[^>]+>/g,'').trim().toLowerCase().replace(/\s+/g,' ');
+        // Tenta achar no mapa
+        let found = null;
+        for(const [key, pgn] of Object.entries(pageMap)){
+          if(key.includes(titleText) || titleText.includes(key)){
+            found = pgn; break;
+          }
+        }
+        if(found === null) return entryFull; // não encontrou — mantém
+        // Reconstrói: primeiro span + dots + número correto
+        const firstSpan = spans[0][0];
+        const dots = '<span class="toc-dots"></span>';
+        return `${divOpen}${firstSpan}${dots}<span>${found}</span>${divClose}`;
+      }
+    );
+    return open + newBody + close;
   });
+
   return html;
 }
 
-/* ════════════════════════════════════════════════════
-   DOCX PARSER — detecta epígrafes, listas, diálogos
-════════════════════════════════════════════════════ */
+/* ═══ SYSTEM PROMPT — RIGOROSO ═══ */
+function buildSys(startPage,bookTitle,userStyle){
+  return `Você é um diagramador editorial profissional. Sua tarefa é converter blocos de texto em páginas HTML estruturadas para um livro KDP 6×9".
+
+═══════════════════════════════════════════
+REGRA ZERO — PROIBIDO
+═══════════════════════════════════════════
+- NUNCA use style= em nenhum elemento.
+- NUNCA altere, resuma ou omita qualquer palavra do texto original.
+- NUNCA emita markdown, comentários ou explicações — apenas HTML de <page>.
+- NUNCA crie classes que não constem nesta especificação.
+
+═══════════════════════════════════════════
+ESTRUTURA OBRIGATÓRIA DE CADA PÁGINA
+═══════════════════════════════════════════
+Toda página DEVE seguir exatamente este esqueleto:
+
+[PÁGINA NORMAL]
+<page>
+<span class="runhead">${bookTitle||'—'}</span>
+... conteúdo ...
+</page>
+
+[PRIMEIRA PÁGINA DE CAPÍTULO]
+<page class="chapter-page">
+<span class="chapter-num">CAPÍTULO N</span>
+<h1>Título do Capítulo</h1>
+<span class="chapter-rule"></span>
+<p class="dropcap">Primeiro parágrafo...</p>
+<p>Demais parágrafos...</p>
+</page>
+
+- chapter-page NÃO leva <span class="runhead">.
+- NÃO coloque <span class="pgnum"> em nenhuma página — a numeração é feita pela Amazon KDP.
+
+═══════════════════════════════════════════
+LÓGICA DE PAGINAÇÃO — ALGORITMO EXATO
+═══════════════════════════════════════════
+CAPACIDADE: cada <page> comporta 380 palavras de corpo de texto.
+Os blocos chegam com [TIPO | N palavras] — use esse número para calcular.
+
+ALGORITMO (execute mentalmente a cada bloco):
+  wordsUsed = 0  (reinicia a cada nova <page>)
+  Para cada bloco recebido:
+    SE bloco é [CAPÍTULO]:
+      → Feche a <page> atual (se aberta). Abra <page class="chapter-page">.
+      → wordsUsed = 0 (capítulos têm espaço próprio no topo; descontar 60 palavras pelo padding).
+    SE bloco é [SEÇÃO] ou [SUBSEÇÃO]:
+      → SE (wordsUsed + palavras_do_h + 60) > 380: feche a página, abra nova <page>.
+      → Senão: adiciona na página atual. wordsUsed += palavras_do_h.
+    SE bloco é [PARÁGRAFO], [PRIMEIRO-PARÁGRAFO], [CITAÇÃO], [SEPARADOR-DE-CENA]:
+      → SE (wordsUsed + palavras_do_bloco) > 380:
+           feche </page>, abra <page> nova, adicione o bloco, wordsUsed = palavras_do_bloco
+      → Senão: adicione na página atual, wordsUsed += palavras_do_bloco
+
+REGRAS ABSOLUTAS:
+A. NUNCA corte um bloco ao meio entre páginas.
+B. NUNCA deixe h2/h3 como último elemento de uma página (órfão). Se h2/h3 não for seguido de pelo menos 2 parágrafos na mesma página, mova-o para a próxima.
+C. NUNCA coloque número de página — a Amazon KDP numera sozinha.
+D. Páginas de capítulo (chapter-page) têm padding maior no topo — descontar ~60 palavras da capacidade.
+E. Ao receber o número "Página atual em andamento: N" na mensagem do usuário, continue a preencher essa página a partir das palavras já usadas antes do chunk.
+
+═══════════════════════════════════════════
+REGRAS DE PARÁGRAFOS — USE EXATAMENTE
+═══════════════════════════════════════════
+<p class="dropcap">   → SOMENTE no primeiro parágrafo logo após <span class="chapter-rule">. Apenas UM por capítulo.
+<p class="no-indent"> → Primeiro parágrafo após h2, h3, blockquote, epigraph ou ornament.
+<p>                   → Todo parágrafo normal de continuidade (terá recuo automático via CSS).
+<p class="ornament">✦  ✦  ✦</p> → Separador de cena (linha em branco no original que indica salto de cena, não início de capítulo).
+<p class="center">    → Parágrafo centralizado (ex.: em páginas de título, copyright).
+
+═══════════════════════════════════════════
+REGRAS DE ELEMENTOS ESPECIAIS
+═══════════════════════════════════════════
+<h2>Subtítulo</h2>          → Seção dentro de capítulo. Parágrafo seguinte = <p class="no-indent">.
+<h3>Sub-subtítulo</h3>      → Subseção. Parágrafo seguinte = <p class="no-indent">.
+<blockquote>Texto<cite>— Autor</cite></blockquote> → Citação com atribuição.
+<div class="epigraph">Texto<cite>— Fonte</cite></div> → Epígrafe (antes do texto de capítulo, após chapter-rule).
+
+═══════════════════════════════════════════
+IDENTIFICAÇÃO DO TIPO DE BLOCO
+═══════════════════════════════════════════
+Analise cada bloco recebido e classifique:
+
+• HEADING1 (capítulo/parte) → inicia <page class="chapter-page">
+  Sinais: o bloco tem type=heading1, OU começa com "Capítulo", "Chapter", "Parte", "Part", "Prólogo", "Epílogo", "Prefácio", "Conclusão", "Introdução" OU é uma linha curta em CAIXA ALTA isolada.
+
+• HEADING2 → <h2> dentro da página corrente
+• HEADING3 → <h3> dentro da página corrente
+
+• PARÁGRAFO NORMAL → <p> ou <p class="no-indent"> conforme regra acima.
+
+• CITAÇÃO → bloco que começa com aspas, travessão longo, ou marcador ">" → <blockquote>
+
+• EPÍGRAFE → citação curta logo após o título de capítulo, antes do primeiro parágrafo → <div class="epigraph">
+
+• SEPARADOR → linha em branco / "* * *" / "—" isolado → <p class="ornament">✦  ✦  ✦</p>
+
+═══════════════════════════════════════════
+SEQUÊNCIA CORRETA DENTRO DE chapter-page
+═══════════════════════════════════════════
+OBRIGATÓRIO nesta ordem:
+1. <span class="chapter-num">CAPÍTULO N</span>   ← sempre em MAIÚSCULAS
+2. <h1>Título</h1>
+3. <span class="chapter-rule"></span>
+4. [OPCIONAL] <div class="epigraph">...</div>     ← só se houver epígrafe
+5. <p class="dropcap">Primeiro parágrafo</p>      ← SEMPRE o primeiro §
+6. <p> ou <p class="no-indent"> para os demais    ← nunca dropcap de novo
+7. NÃO adicione <span class="pgnum"> — Amazon numera sozinha
+
+═══════════════════════════════════════════
+SUMÁRIO — INSTRUÇÃO CRÍTICA
+═══════════════════════════════════════════
+Se o texto contiver um sumário/índice, use uma page com class="toc-page":
+<page class="toc-page">
+<span class="runhead">Sumário</span>
+<h2>Sumário</h2>
+<div class="toc-entry toc-part"><span>PARTE I — Título</span><span class="toc-dots"></span><span>?</span></div>
+<div class="toc-entry toc-cap"><span>Capítulo 1 — Título</span><span class="toc-dots"></span><span>?</span></div>
+</page>
+
+REGRAS DO SUMÁRIO:
+- Use "?" como número — será substituído automaticamente pelo número real.
+- toc-part: Partes/Seções principais. toc-cap: Capítulos (com recuo).
+- Inclua TODOS os capítulos do sumário original, sem inventar novos.
+
+═══════════════════════════════════════════
+PÁGINAS ESPECIAIS (apenas se o texto as contiver)
+═══════════════════════════════════════════
+<page class="title-page">   → Página de título. Sem runhead.
+<page class="copyright-page"> → Página de direitos. Todo <p> com class="no-indent".
+
+${userStyle?`═══════════════════════════════════════════\nESTILO ADICIONAL SOLICITADO PELO USUÁRIO\n═══════════════════════════════════════════\n${userStyle}\n`:''}
+RETORNE APENAS o HTML das páginas <page>…</page> em sequência. Nenhum texto fora das tags.`;
+}
+
+/* ═══ DOCX PARSER — APRIMORADO ═══ */
 async function parseDocx(file){
   const ab=await file.arrayBuffer();
-  const{value}=await mammoth.convertToHtml({arrayBuffer:ab},{
-    styleMap:["p[style-name='Quote'] => blockquote:fresh","p[style-name='Epigraph'] => p.epigraph:fresh"]
-  });
+  const{value}=await mammoth.convertToHtml({arrayBuffer:ab});
   const doc=new DOMParser().parseFromString(value,'text/html');
   const blocks=[];
   let firstAfterH=true;
   let prevWasBlank=false;
-  let prevWasChapter=false;
 
   doc.body.childNodes.forEach(node=>{
     if(node.nodeType!==1)return;
@@ -383,50 +637,44 @@ async function parseDocx(file){
     const raw=(el.textContent||'').trim();
     const tag=el.tagName.toLowerCase();
 
-    if(!raw){if(tag==='p')prevWasBlank=true;return;}
+    // Linha vazia: marca como possível separador de cena
+    if(!raw){
+      if(tag==='p') prevWasBlank=true;
+      return;
+    }
 
     let type='paragraph';
     if(tag==='h1')type='heading1';
     else if(tag==='h2')type='heading2';
     else if(tag==='h3')type='heading3';
     else if(tag==='blockquote')type='blockquote';
-    else if(tag==='ul'||tag==='ol')type='list';
 
-    // Auto-promoção para heading1
-    if(type==='paragraph'&&raw.length<90){
-      if(/^(CAPÍTULO|CHAPTER|PARTE\s|PART\s[IVX\d]|EPÍLOGO|PRÓLOGO|PREFÁCIO|INTRODUÇÃO|CONCLUSÃO|SUMÁRIO|POSFÁCIO|DEDICATÓRIA|AGRADECIMENTOS)/i.test(raw))
+    // Auto-promoção: linhas curtas com palavras-chave de capítulo
+    if(type==='paragraph'&&raw.length<80){
+      const up=raw.toUpperCase();
+      if(/^(CAPÍTULO|CHAPTER|PARTE |PART I|PART II|EPÍLOGO|PRÓLOGO|PREFÁCIO|INTRODUÇÃO|CONCLUSÃO|SUMÁRIO|POSFÁCIO|DEDICATÓRIA|AGRADECIMENTOS)/.test(up))
         type='heading1';
     }
 
-    // Separador de cena
+    // Separador de cena: asteriscos, traços, linhas ornamentais
     if(type==='paragraph'&&/^[*\-–—·•✦✧★☆\s]{1,15}$/.test(raw))
       type='separator';
 
-    // Epígrafe: texto curto com aspas/travessão logo após capítulo
-    if(type==='paragraph'&&prevWasChapter&&raw.length<250&&/["«"—]/.test(raw))
-      type='epigraph';
-
-    // Citação inline (aspas/travessão no início, linha em branco antes, < 300 chars)
-    if(type==='paragraph'&&raw.length<300&&/^["«"—]/.test(raw)&&prevWasBlank&&!prevWasChapter)
+    // Citação inline (começa com aspas ou travessão longo sem ser diálogo)
+    if(type==='paragraph'&&raw.length<300&&/^["«"—]/.test(raw)&&prevWasBlank)
       type='blockquote';
 
-    const wc=raw.split(/\s+/).filter(Boolean).length;
     let isFirst=false;
-    if(type==='heading1'){firstAfterH=true;prevWasChapter=true;}
-    else{
-      if(type==='paragraph'){isFirst=firstAfterH;firstAfterH=false;}
-      prevWasChapter=false;
-    }
+    if(type.startsWith('heading')){firstAfterH=true;}
+    else if(type==='paragraph'){isFirst=firstAfterH;firstAfterH=false;}
 
     prevWasBlank=false;
-    blocks.push({type,text:raw,isFirst,wc});
+    blocks.push({type,text:raw,isFirst});
   });
   return blocks;
 }
 
-/* ════════════════════════════════════════════════════
-   DOCX EXPORT (estrutural — sem IA)
-════════════════════════════════════════════════════ */
+/* ═══ DOCX EXPORT ═══ */
 async function exportDocx(blocks,config){
   const{Document,Packer,Paragraph,TextRun,HeadingLevel,AlignmentType,Header,Footer,PageNumber}=window.docx;
   const it=n=>Math.round(n*1440);
@@ -438,9 +686,9 @@ async function exportDocx(blocks,config){
     else if(b.type==='heading3')hl=HeadingLevel.HEADING_3;
     const runs=[];
     if(!hl&&config.dropCaps&&b.isFirst&&b.text.length>0){
-      runs.push(new TextRun({text:b.text[0],size:66,bold:true}));
-      runs.push(new TextRun({text:b.text.slice(1),size:22}));
-    }else runs.push(new TextRun({text:b.text,size:22}));
+      runs.push(new TextRun({text:b.text[0],size:11*6,bold:true}));
+      runs.push(new TextRun({text:b.text.slice(1),size:11*2}));
+    }else runs.push(new TextRun({text:b.text,size:11*2}));
     return new Paragraph({
       children:hl?undefined:runs,text:hl?b.text:undefined,heading:hl,
       alignment:b.type.startsWith('heading')?AlignmentType.CENTER:AlignmentType.JUSTIFIED,
@@ -448,28 +696,30 @@ async function exportDocx(blocks,config){
       indent:(!hl&&!b.isFirst)?{firstLine:it(0.25)}:undefined,
     });
   });
-  const doc2=new Document({sections:[{
-    properties:{page:{size:{width:it(dims.w),height:it(dims.h)},margin:{top:it(0.8),bottom:it(0.8),left:it(0.75),right:it(0.6)}}},
-    headers:config.title?{default:new Header({children:[new Paragraph({alignment:AlignmentType.CENTER,children:[new TextRun({text:config.title,italics:true,color:'999999',size:18})]})]})}:undefined,
-    footers:{default:new Footer({children:[new Paragraph({alignment:AlignmentType.CENTER,children:[new TextRun({children:[PageNumber.CURRENT],size:18})]})]})},
-    children,
-  }]});
+  const doc2=new Document({
+    sections:[{
+      properties:{page:{size:{width:it(dims.w),height:it(dims.h)},margin:{top:it(0.8),bottom:it(0.8),left:it(0.75),right:it(0.6)}}},
+      headers:config.title?{default:new Header({children:[new Paragraph({alignment:AlignmentType.CENTER,children:[new TextRun({text:config.title,italics:true,color:'999999',size:18})]})]})}:undefined,
+      footers:{default:new Footer({children:[new Paragraph({alignment:AlignmentType.CENTER,children:[new TextRun({children:[PageNumber.CURRENT],size:18})]})]})},
+      children,
+    }],
+  });
   saveAs(await Packer.toBlob(doc2),'livro-formatado.docx');
 }
 
-/* ════════════════════════════════════════════════════
-   COMPONENTS
-════════════════════════════════════════════════════ */
+/* ═══ COMPONENTS ═══ */
+
 function Toggle({v,onChange}){
   return <button className={`tog ${v?'on':''}`} onClick={()=>onChange(!v)} type="button"/>;
 }
 
-function Sidebar({cfg,setCfg,blocks,processedIdx,aiLoading,onDiagram,onResume,onApplyFix,onPdf,onDocx,onExportJpgs,onApiKey,onNewFile,onReset}){
-  const[prompt,setPrompt]=useState('');
+function Sidebar({cfg,setCfg,blocks,processedIdx,aiLoading,onDiagram,onResume,onApplyFix,onPdf,onDocx,onExportJpgs,onApiKey,onNewFile}){
+  const [prompt,setPrompt]=useState('');
   const canResume=!!blocks&&processedIdx<blocks.length;
   const isInit=processedIdx===0;
   const pct=blocks?Math.round((Math.max(processedIdx,1)/blocks.length)*100):0;
   const upd=(k,v)=>setCfg(c=>({...c,[k]:v}));
+
   return(
     <aside className="sb">
       <div className="sb-head">
@@ -477,35 +727,54 @@ function Sidebar({cfg,setCfg,blocks,processedIdx,aiLoading,onDiagram,onResume,on
         {blocks&&<button className="sb-newfile" onClick={onNewFile}>← Novo arquivo</button>}
       </div>
       <div className="sb-body">
+
+        {/* IA */}
         <div className="sec">
           <div className="sec-title">✦ Instruções da IA</div>
           <div className="sec-body">
-            <textarea className="ai-ta" rows={3} placeholder="Opcional: estilo gótico, ornamentos barrocos, epígrafes..."
+            <textarea className="ai-ta" rows={3}
+              placeholder="Opcional: estilo gótico, ornamentos barrocos, fontes sans..."
               value={prompt} onChange={e=>setPrompt(e.target.value)}/>
+
             {blocks&&processedIdx>0&&(
               <div>
                 <div className="prog-label"><span>Progresso</span><span>{pct}% ({processedIdx}/{blocks.length})</span></div>
                 <div className="prog-wrap"><div className="prog-fill" style={{width:`${pct}%`}}/></div>
               </div>
             )}
-            {canResume&&<button className="btn btn-gold" onClick={onResume} disabled={aiLoading}>{isInit?'▶ Iniciar Diagramação':'▶ Continuar'}</button>}
+
+            {canResume&&(
+              <button className="btn btn-gold" onClick={()=>onResume()} disabled={aiLoading}>
+                {isInit?'▶ Iniciar Diagramação':'▶ Continuar de onde parou'}
+              </button>
+            )}
             <button className="btn btn-dark" onClick={()=>{onDiagram(prompt);setPrompt('');}} disabled={!blocks||aiLoading}>
-              {aiLoading?'⏹ Interromper':'↺ Rediagramar'}
+              {aiLoading?'⏹ Interromper e Refazer':'↺ Rediagramar'}
             </button>
-            {prompt.trim()&&<button className="btn btn-ghost" onClick={()=>{onApplyFix(prompt);setPrompt('');}} disabled={aiLoading} style={{fontSize:11}}>✎ Correção pontual</button>}
+            {prompt.trim()&&(
+              <button className="btn btn-ghost" onClick={()=>{onApplyFix(prompt);setPrompt('');}} disabled={aiLoading} style={{fontSize:11}}>
+                ✎ Correção pontual no HTML
+              </button>
+            )}
           </div>
         </div>
+
         <div className="div"/>
+
+        {/* Exportar */}
         <div className="sec">
           <div className="sec-title">Exportar</div>
           <div className="sec-body">
-            <button className="btn btn-gold" onClick={onPdf}>📸 PDF KDP (Screenshot)</button>
+            <button className="btn btn-gold" onClick={onPdf}>📸 PDF por Screenshot KDP</button>
             <button className="btn btn-dark" onClick={onDocx} disabled={!blocks}>📄 Exportar DOCX</button>
-            <button className="btn btn-ghost" onClick={onExportJpgs} style={{fontSize:11}}>🖼 Páginas como JPG</button>
+            <button className="btn btn-ghost" onClick={onExportJpgs} disabled={!html} style={{fontSize:11}}>🖼 Salvar páginas como JPG</button>
             <button className="btn btn-ghost" onClick={onApiKey} style={{fontSize:11}}>🔑 Chave API Gemini</button>
           </div>
         </div>
+
         <div className="div"/>
+
+        {/* Livro */}
         <div className="sec">
           <div className="sec-title">Livro</div>
           <div className="sec-body">
@@ -518,6 +787,8 @@ function Sidebar({cfg,setCfg,blocks,processedIdx,aiLoading,onDiagram,onResume,on
             </div>
           </div>
         </div>
+
+        {/* Opções */}
         <div className="sec">
           <div className="sec-title">Opções</div>
           <div className="sec-body">
@@ -526,12 +797,7 @@ function Sidebar({cfg,setCfg,blocks,processedIdx,aiLoading,onDiagram,onResume,on
             ))}
           </div>
         </div>
-        <div className="div"/>
-        <div className="sec-body" style={{paddingBottom:16}}>
-          <button className="btn btn-red" onClick={()=>{if(confirm('Zerar tudo? Blocos, HTML e progresso serão apagados.'))onReset();}} disabled={aiLoading}>
-            🗑 Zerar Tudo
-          </button>
-        </div>
+
       </div>
     </aside>
   );
@@ -540,24 +806,31 @@ function Sidebar({cfg,setCfg,blocks,processedIdx,aiLoading,onDiagram,onResume,on
 function Preview({html,aiLoading,processedIdx,total}){
   const pages=useMemo(()=>{
     if(!html||!html.toLowerCase().includes('<page'))return null;
+    // split on opening <page tags
     return html.split(/(?=<page[\s>])/i).filter(p=>p.trim()&&p.toLowerCase().startsWith('<page'));
   },[html]);
+
   const pct=total?Math.round((Math.max(processedIdx,1)/total)*100):0;
 
-  // Overflow detector — marca páginas com conteúdo excedente
+  // Detect overflow after render
   useEffect(()=>{
-    document.querySelectorAll('.pg-wrap').forEach(wrap=>{
-      const pg=wrap.querySelector('page');
-      if(!pg)return;
-      const ph=pg.getBoundingClientRect().height||864;
-      wrap.classList.toggle('ov',pg.scrollHeight>ph+12);
+    const wrappers=document.querySelectorAll('.pg-wrap');
+    wrappers.forEach(wrap=>{
+      const pageEl=wrap.querySelector('page');
+      if(!pageEl)return;
+      const maxH=parseInt(pageEl.style.height)||pageEl.getBoundingClientRect().height;
+      const scrollH=pageEl.scrollHeight;
+      if(scrollH>maxH+8){wrap.classList.add('overflow-warn');}
+      else{wrap.classList.remove('overflow-warn');}
     });
   });
 
   return(
     <div className="pv">
       <div className="pv-bar">
-        <span className="pv-bar-title">{pages?`${pages.length} página${pages.length!==1?'s':''}`:aiLoading?'Gerando...':'Visualização'}</span>
+        <span className="pv-bar-title">
+          {pages?`${pages.length} página${pages.length!==1?'s':''}`:aiLoading?'Gerando...':'Visualização'}
+        </span>
         {aiLoading&&<span style={{fontSize:12,color:'#c9884e',display:'flex',alignItems:'center',gap:6}}>
           <div className="spin spin-dark"/>Diagramando... {pct}%
         </span>}
@@ -568,10 +841,12 @@ function Preview({html,aiLoading,processedIdx,total}){
           :<div className="empty">
             <div className="empty-icon">📖</div>
             <h3>{processedIdx===0?'Livro carregado':'Pausado'}</h3>
-            <p>{processedIdx===0?'Clique em "Iniciar Diagramação".':
-              `Pausado em ${processedIdx} de ${total} blocos.`}</p>
+            <p>{processedIdx===0
+              ?'Clique em "Iniciar Diagramação" para a IA paginar seu livro.'
+              :`Pausado em ${processedIdx} de ${total} blocos.`}
+            </p>
             {aiLoading&&<div style={{marginTop:16,width:260}}>
-              <div className="prog-label"><span>Gerando...</span><span>{pct}%</span></div>
+              <div className="prog-label"><span>Gerando layout...</span><span>{pct}%</span></div>
               <div className="prog-wrap"><div className="prog-fill" style={{width:`${pct}%`}}/></div>
             </div>}
           </div>
@@ -582,7 +857,7 @@ function Preview({html,aiLoading,processedIdx,total}){
 }
 
 function UploadScreen({onFile,loading}){
-  const[drag,setDrag]=useState(false);
+  const [drag,setDrag]=useState(false);
   const go=f=>{if(!f)return;if(!f.name.endsWith('.docx')){alert('Apenas .docx');return;}onFile(f);};
   return(
     <div className="up-screen">
@@ -595,12 +870,14 @@ function UploadScreen({onFile,loading}){
         onDragLeave={()=>setDrag(false)}
         onDrop={e=>{e.preventDefault();setDrag(false);go(e.dataTransfer.files[0]);}}>
         <input type="file" accept=".docx" onChange={e=>go(e.target.files[0])}/>
-        {loading?<><div className="dz-icon">⏳</div><div className="dz-title">Processando...</div></>
+        {loading
+          ?<><div className="dz-icon">⏳</div><div className="dz-title">Processando...</div></>
           :<><div className="dz-icon">📚</div><div className="dz-title">Arraste o manuscrito aqui</div>
             <div className="dz-sub">Arquivo Word (.docx)</div>
             <div className="dz-btn">📁 Escolher arquivo</div></>}
       </div>
-      <p className="up-note">Necessário: chave gratuita da API Gemini →{' '}
+      <p className="up-note">
+        Necessário: chave gratuita da API Gemini →{' '}
         <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="link">aistudio.google.com</a>
       </p>
     </div>
@@ -608,7 +885,7 @@ function UploadScreen({onFile,loading}){
 }
 
 function ApiModal({onClose,apiKey,setApiKey}){
-  const[v,setV]=useState(apiKey);
+  const [v,setV]=useState(apiKey);
   const save=()=>{setApiKey(v.trim());localStorage.setItem('kdp-key',v.trim());onClose();};
   return(
     <div className="overlay" onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
@@ -617,7 +894,8 @@ function ApiModal({onClose,apiKey,setApiKey}){
         <h3>🔑 Chave API Gemini</h3>
         <p>Salva apenas no seu navegador. Nunca sai do seu dispositivo.</p>
         <p><a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="link">→ Obter chave gratuita no Google AI Studio</a></p>
-        <input type="password" placeholder="AIzaSy..." value={v} onChange={e=>setV(e.target.value)} onKeyDown={e=>e.key==='Enter'&&save()}/>
+        <input type="password" placeholder="AIzaSy..." value={v} onChange={e=>setV(e.target.value)}
+          onKeyDown={e=>e.key==='Enter'&&save()}/>
         <div className="modal-actions">
           <button className="btn btn-ghost" onClick={()=>{setApiKey('');localStorage.removeItem('kdp-key');setV('');onClose();}}>Limpar</button>
           <button className="btn btn-gold" onClick={save}>Salvar</button>
@@ -633,7 +911,8 @@ function ErrModal({msg,onClose}){
       <div className="modal" style={{textAlign:'center'}}>
         <button className="modal-x" onClick={onClose}>✕</button>
         <div className="err-icon">⚠️</div>
-        <h3>Erro</h3><p>{msg}</p>
+        <h3>Erro</h3>
+        <p>{msg}</p>
         <button className="btn btn-red" style={{marginTop:14}} onClick={onClose}>Fechar</button>
       </div>
     </div>
@@ -641,48 +920,49 @@ function ErrModal({msg,onClose}){
 }
 
 function PdfModal({onClose,onExport,pdfProgress}){
-  const busy=pdfProgress!==null;
-  const pct=pdfProgress?Math.round((pdfProgress.current/pdfProgress.total)*100):0;
+  // pdfProgress: null | {current,total,phase}
+  const busy = pdfProgress !== null;
+  const pct  = pdfProgress ? Math.round((pdfProgress.current/pdfProgress.total)*100) : 0;
   return(
     <div className="overlay" onClick={e=>{if(!busy&&e.target===e.currentTarget)onClose();}}>
       <div className="modal" style={{textAlign:'center'}}>
         {!busy&&<button className="modal-x" onClick={onClose}>✕</button>}
         <div style={{fontSize:38,marginBottom:10}}>{busy?'⏳':'🖨'}</div>
         <h3>{busy?'Gerando PDF…':'Exportar PDF KDP'}</h3>
+
         {!busy&&<>
-          <p style={{marginBottom:16}}>Cada página capturada como imagem nas dimensões exatas KDP. O que você vê é o que vai para a Amazon.</p>
-          <button className="btn btn-gold" onClick={onExport}>📸 Capturar e gerar PDF</button>
+          <p style={{marginBottom:16}}>Cada página será capturada como imagem e montada em um PDF nas dimensões exatas do KDP. O que você vê é o que vai para a Amazon.</p>
+          <button className="btn btn-gold" onClick={onExport}>📸 Capturar páginas e gerar PDF</button>
         </>}
+
         {busy&&<>
           <p>{pdfProgress.phase}</p>
           <div style={{margin:'14px 0 6px'}}>
             <div className="prog-label"><span>Página {pdfProgress.current} de {pdfProgress.total}</span><span>{pct}%</span></div>
             <div className="prog-wrap"><div className="prog-fill" style={{width:`${pct}%`}}/></div>
           </div>
-          <p style={{fontSize:11,color:'#aaa',marginTop:8}}>Não feche nem mova a janela.</p>
+          <p style={{fontSize:11,color:'#aaa',marginTop:8}}>Não feche nem mova a janela durante a captura.</p>
         </>}
       </div>
     </div>
   );
 }
 
-/* ════════════════════════════════════════════════════
-   APP
-════════════════════════════════════════════════════ */
+/* ═══ APP ═══ */
 function App(){
-  const[cfg,setCfg]=useState(DEF);
-  const[blocks,setBlocks]=useState(null);
-  const[html,setHtml]=useState(null);
-  const[loading,setLoading]=useState(false);
-  const[aiLoading,setAiLoading]=useState(false);
-  const[pidx,setPidx]=useState(0);
-  const[apiKey,setApiKey]=useState('');
-  const[err,setErr]=useState(null);
-  const[showApi,setShowApi]=useState(false);
-  const[showPdf,setShowPdf]=useState(false);
-  const[pdfProgress,setPdfProgress]=useState(null);
+  const [cfg,setCfg]=useState(DEF);
+  const [blocks,setBlocks]=useState(null);
+  const [html,setHtml]=useState(null);
+  const [loading,setLoading]=useState(false);
+  const [aiLoading,setAiLoading]=useState(false);
+  const [pidx,setPidx]=useState(0);
+  const [apiKey,setApiKey]=useState('');
+  const [err,setErr]=useState(null);
+  const [showApi,setShowApi]=useState(false);
+  const [showPdf,setShowPdf]=useState(false);
   const abrt=useRef(null);
 
+  // restore
   useEffect(()=>{
     setApiKey(localStorage.getItem('kdp-key')||'');
     (async()=>{
@@ -696,24 +976,16 @@ function App(){
   useEffect(()=>{if(html!=null)db.set('kdp-html',html);},[html]);
   useEffect(()=>{db.set('kdp-pidx',pidx);},[pidx]);
 
+  // Sincroniza dimensões da página no CSS com o trimSize selecionado
   useEffect(()=>{
     const t=TRIM[cfg.trimSize]||TRIM['6x9'];
     const s=document.getElementById('trim-style');
     if(s)s.textContent=`page{width:${t.pw}px;height:${t.ph}px;min-height:${t.ph}px;}`;
   },[cfg.trimSize]);
 
-  const needKey=useCallback(()=>{if(!apiKey){setShowApi(true);return false;}return true;},[apiKey]);
+  const needKey=()=>{if(!apiKey){setShowApi(true);return false;}return true;};
 
-  /* ══════════════════════════════════════════
-     DIAGRAMA — núcleo redesenhado
-     
-     FLUXO:
-     1. prePaginate() agrupa blocos em páginas localmente
-     2. Cada grupo vira um chunk de texto separado por ═══PAGE═══
-     3. A IA recebe N páginas por chamada (PAGES_PER_CALL)
-     4. Ela só converte — não precisa calcular quebras
-     5. Saída limpa, strip de artefatos, fixTocAndStrip
-  ══════════════════════════════════════════ */
+  /* DIAGRAMA — núcleo */
   const doDiagram=useCallback(async(userStyle='',startIdx=0,baseHtml='')=>{
     if(!blocks||!needKey())return;
     if(abrt.current)abrt.current.abort();
@@ -721,63 +993,62 @@ function App(){
 
     try{
       setAiLoading(true);setErr(null);
-      const cap=(TRIM[cfg.trimSize]||TRIM['6x9']).cap;
+      let out=baseHtml;
+      let pageNum=1;
 
-      // Adiciona páginas especiais ao início, se pedidas
-      let allBlocks=[...blocks];
-      if(cfg.addTitlePage)
-        allBlocks=[{type:'heading1',text:`${cfg.title||'Título'}__TITLE_PAGE__`,wc:0,isFirst:false},...allBlocks];
-      if(cfg.addCopyrightPage)
-        allBlocks.splice(cfg.addTitlePage?1:0,0,{type:'heading1',text:`${cfg.author||''}__COPYRIGHT_PAGE__`,wc:0,isFirst:false});
-
-      // Pré-pagina localmente — JS faz o trabalho pesado
-      const pages=prePaginate(allBlocks,cap);
-
-      let out=startIdx===0?'':baseHtml||html||'';
-      if(startIdx===0){setHtml('');setPidx(0);}
-
-      // Quantas páginas por chamada de API
-      const PAGES_PER_CALL=6;
-      const sys=buildSys(cfg.title,userStyle);
-
-      // startIdx agora representa índice de página (não de bloco)
-      for(let pi=startIdx;pi<pages.length;pi+=PAGES_PER_CALL){
-        if(ctrl.signal.aborted)return;
-        // Atualiza progresso em termos de blocos processados
-        const blocksProcessed=pages.slice(0,pi).reduce((s,pg)=>s+pg.length,0);
-        setPidx(blocksProcessed);
-
-        const batch=pages.slice(pi,pi+PAGES_PER_CALL);
-        const userMsg=batch.map((pg,idx)=>{
-          const lines=pg.map(b=>{
-            const tag=
-              b.type==='heading1'   ?'[CAPÍTULO]':
-              b.type==='heading2'   ?'[SEÇÃO]':
-              b.type==='heading3'   ?'[SUBSEÇÃO]':
-              b.type==='separator'  ?'[SEPARADOR]':
-              b.type==='blockquote' ?'[CITAÇÃO]':
-              b.type==='epigraph'   ?'[EPÍGRAFE]':
-              b.type==='list'       ?'[LISTA]':
-              b.isFirst             ?'[1º-PARÁGRAFO]':'[§]';
-            return `${tag} ${b.text}`;
-          }).join('\n');
-          return `═══PAGE ${pi+idx+1}═══\n${lines}`;
-        }).join('\n\n');
-
-        let chunkOut='';
-        await gemStream(apiKey,sys,userMsg,t=>{chunkOut+=t;out+=t;setHtml(out);},ctrl.signal);
-
-        // Limpeza de artefatos comuns na saída da IA
-        const clean=chunkOut
-          .replace(/```html[\s\S]*?```/g,m=>m.replace(/```html\n?/,'').replace(/\n?```/,''))
-          .replace(/```/g,'')
-          .replace(/<!--[\s\S]*?-->/g,'');
-        if(clean!==chunkOut){out=out.slice(0,out.length-chunkOut.length)+clean;setHtml(out);}
-
-        if(pi+PAGES_PER_CALL<pages.length)await new Promise(r=>setTimeout(r,800));
+      if(startIdx===0){setHtml('');out='';setPidx(0);}
+      else{
+        const m=(baseHtml||html||'').match(/<page[\s>]/gi);
+        pageNum=m?m.length+1:1;
+        out=baseHtml||html||'';
       }
 
-      const fixed=fixTocAndStrip(out);
+      // Chunk menor = menos contexto para a IA perder o fio
+      const CHUNK=20;
+
+      for(let i=startIdx;i<blocks.length;i+=CHUNK){
+        if(ctrl.signal.aborted)return;
+        setPidx(i);
+
+        // Reconstrói o sys a cada chunk com o pageNum atual — a IA sabe em qual página está
+        const sys=buildSys(pageNum,cfg.title,userStyle);
+
+        const chunk=blocks.slice(i,i+CHUNK);
+        // Envia tipo + contagem de palavras — a IA usa o word count para calcular capacidade da página
+        const text=chunk.map(b=>{
+          const wc=b.text.trim().split(/\s+/).filter(Boolean).length;
+          if(b.type==='heading1')   return `[CAPÍTULO | ${wc} palavras]\n${b.text}`;
+          if(b.type==='heading2')   return `[SEÇÃO | ${wc} palavras]\n${b.text}`;
+          if(b.type==='heading3')   return `[SUBSEÇÃO | ${wc} palavras]\n${b.text}`;
+          if(b.type==='separator')  return `[SEPARADOR-DE-CENA | ${wc} palavras]\n${b.text}`;
+          if(b.type==='blockquote') return `[CITAÇÃO | ${wc} palavras]\n${b.text}`;
+          if(b.isFirst)             return `[PRIMEIRO-PARÁGRAFO | ${wc} palavras]\n${b.text}`;
+          return `[PARÁGRAFO | ${wc} palavras]\n${b.text}`;
+        }).join('\n\n---\n\n');
+
+      let chunkOut='';
+        // Estimate words already used on current open page (last page of previous chunk)
+        let wordsOnCurrentPage=0;
+        if(out){
+          const lastPageMatch=out.match(/(<page(?:\s[^>]*)?>)([\s\S]*?)$/i);
+          if(lastPageMatch){
+            const lastPageContent=lastPageMatch[2];
+            // rough word count of content already on the last open page
+            const plainText=lastPageContent.replace(/<[^>]+>/g,' ');
+            wordsOnCurrentPage=plainText.trim().split(/\s+/).filter(Boolean).length;
+          }
+        }
+        await gemStream(apiKey,sys,`Blocos para paginar (marcadores [TIPO | N palavras] indicam o tipo e contagem — NÃO os inclua no HTML gerado):\n\nContexto de continuação: página atual = ${pageNum}, palavras já usadas na página em aberto ≈ ${wordsOnCurrentPage}. Continue o HTML sem repetir páginas anteriores.\n\n${text}`,t=>{
+          chunkOut+=t;out+=t;setHtml(out);
+        },ctrl.signal);
+
+        const m=chunkOut.match(/<page[\s>]/gi);
+        pageNum+=m?m.length:0;
+        setPidx(Math.min(i+CHUNK,blocks.length));
+        if(i+CHUNK<blocks.length)await new Promise(r=>setTimeout(r,1200));
+      }
+      // Pós-processamento: remove pgnum e corrige sumário
+      const fixed = fixTocAndStrip(out);
       setHtml(fixed);
       setPidx(blocks.length);
     }catch(e){
@@ -788,31 +1059,22 @@ function App(){
     }
   },[blocks,cfg,apiKey,html,needKey]);
 
-  const handleResume=useCallback(()=>{
-    if(!blocks)return;
-    // Resume conta por blocos processados
-    doDiagram('',pidx,html||'');
-  },[doDiagram,pidx,html,blocks]);
+  const handleResume=useCallback(()=>doDiagram('',pidx,html||''),[doDiagram,pidx,html]);
 
-  /* ══════════════════════════════════════════
-     FIX CIRÚRGICO — opera só na página clicada
-     se nenhum número fornecido, manda o HTML todo
-     mas com prompt muito mais curto
-  ══════════════════════════════════════════ */
   const handleFix=useCallback(async userStyle=>{
     if(!html||!userStyle.trim()||!needKey())return;
     if(abrt.current)abrt.current.abort();
     const ctrl=new AbortController();abrt.current=ctrl;
     try{
       setAiLoading(true);setErr(null);
-      const sys=`Editor HTML de livro KDP. Aplique SOMENTE a instrução ao HTML. Retorne HTML completo. Sem markdown. Não altere texto original.`;
+      const sys=`Você é editor HTML. Aplique APENAS a instrução do usuário ao HTML abaixo. Retorne o HTML completo modificado, sem markdown, sem explicações. NÃO altere texto original.`;
       let out='';
-      await gemStream(apiKey,sys,`HTML:\n${html}\n\nInstrução: ${userStyle}`,t=>{out+=t;},ctrl.signal);
-      const clean=out.replace(/```html\n?/g,'').replace(/```/g,'').trim();
+      await gemStream(apiKey,sys,`HTML:\n\n${html}\n\nInstrução: ${userStyle}`,t=>{out+=t;},ctrl.signal);
+      const clean=out.replace(/```html/g,'').replace(/```/g,'').trim();
       setHtml(clean);
     }catch(e){if(e.name!=='AbortError')setErr(e.message||'Erro.');}
     finally{if(abrt.current===ctrl)setAiLoading(false);}
-  },[html,apiKey,needKey]);
+  },[html,apiKey]);
 
   const handleFile=async f=>{
     try{setLoading(true);const b=await parseDocx(f);setBlocks(b);setHtml(null);setPidx(0);}
@@ -820,76 +1082,127 @@ function App(){
     finally{setLoading(false);}
   };
 
-  /* ══ PDF EXPORT ══ */
+  const [pdfProgress,setPdfProgress]=useState(null);
+
+  /* ══════════════════════════════════════════════
+     exportPdfScreenshot — captura cada <page> como
+     imagem via html2canvas e monta o PDF com jsPDF
+     nas dimensões exatas KDP (6×9" = 432×648pt).
+  ══════════════════════════════════════════════ */
   const exportPdfScreenshot=useCallback(async()=>{
     const wrappers=document.querySelectorAll('.pg-wrap');
     if(!wrappers.length){setErr('Nenhuma página para exportar.');return;}
-    const{jsPDF}=window.jspdf;
+
+    const {jsPDF}=window.jspdf;
+    // Dimensões do trimSize selecionado em pontos (1in = 72pt)
     const trimDims=TRIM[cfg.trimSize]||TRIM['6x9'];
-    const PW=trimDims.w*72,PH=trimDims.h*72;
+    const PW=trimDims.w*72, PH=trimDims.h*72;
     const doc=new jsPDF({orientation:'portrait',unit:'pt',format:[PW,PH],compress:true});
+
     const total=wrappers.length;
     try{
       for(let i=0;i<total;i++){
         setPdfProgress({current:i+1,total,phase:`Capturando página ${i+1} de ${total}…`});
+        // Pequena pausa para o React renderizar o progresso antes de bloquear o thread
         await new Promise(r=>setTimeout(r,30));
+
         const wrap=wrappers[i];
+        // Captura o elemento <page> diretamente (sem sombra do wrapper)
         const pageEl=wrap.querySelector('page')||wrap;
-        const PX_W=trimDims.pw,PX_H=trimDims.ph;
+        const trimDims2=TRIM[cfg.trimSize]||TRIM['6x9'];
+        const PX_W=trimDims2.pw, PX_H=trimDims2.ph;
+        const scale=3; // 3× = ~288dpi — excelente para impressão KDP
+
         const canvas=await html2canvas(pageEl,{
-          scale:3,useCORS:true,allowTaint:true,backgroundColor:'#ffffff',
-          width:PX_W,height:PX_H,windowWidth:PX_W,windowHeight:PX_H,logging:false,
-          onclone:clonedDoc=>{
+          scale,
+          useCORS:true,
+          allowTaint:true,
+          backgroundColor:'#ffffff',
+          width:PX_W,
+          height:PX_H,
+          windowWidth:PX_W,
+          windowHeight:PX_H,
+          logging:false,
+          onclone:(clonedDoc)=>{
+            // copia folhas de estilo (incluindo Google Fonts) para o clone
             [...document.querySelectorAll('link[rel=stylesheet],style')].forEach(s=>{
-              if(s.tagName.toLowerCase()==='link'){const c=clonedDoc.createElement('link');c.rel='stylesheet';c.href=s.href;clonedDoc.head.appendChild(c);}
-              else{const c=clonedDoc.createElement('style');c.textContent=s.textContent;clonedDoc.head.appendChild(c);}
+              const tag=s.tagName.toLowerCase();
+              if(tag==='link'){
+                const c=clonedDoc.createElement('link');
+                c.rel='stylesheet';c.href=s.href;
+                clonedDoc.head.appendChild(c);
+              } else {
+                const c=clonedDoc.createElement('style');
+                c.textContent=s.textContent;
+                clonedDoc.head.appendChild(c);
+              }
             });
           },
         });
-        const imgData=canvas.toDataURL('image/jpeg',0.97);
+
+        const imgData=canvas.toDataURL('image/jpeg',0.97); // 0.97 = alta qualidade
         if(i>0)doc.addPage([PW,PH],'portrait');
+        // Estica a imagem para cobrir exatamente a página KDP
         doc.addImage(imgData,'JPEG',0,0,PW,PH,undefined,'FAST');
       }
+
       setPdfProgress({current:total,total,phase:'Salvando PDF…'});
       await new Promise(r=>setTimeout(r,80));
+
       const title=(cfg.title||'livro').replace(/[^a-z0-9áéíóúãõâêîôûàèçñ\s]/gi,'').trim()||'livro';
       doc.save(`${title}-kdp.pdf`);
-    }finally{setPdfProgress(null);setShowPdf(false);}
+    }finally{
+      setPdfProgress(null);
+      setShowPdf(false);
+    }
   },[cfg]);
 
+  const handlePdf=()=>setShowPdf(true);
+
+  /* Exporta cada página como JPG individual (zipado via download múltiplo) */
   const handleExportJpgs=useCallback(async()=>{
     const wrappers=document.querySelectorAll('.pg-wrap');
     if(!wrappers.length){setErr('Nenhuma página para exportar.');return;}
     setLoading(true);
     try{
       const trimDims=TRIM[cfg.trimSize]||TRIM['6x9'];
+      const PX_W=trimDims.pw, PX_H=trimDims.ph;
+      const scale=3;
       const title=(cfg.title||'pagina').replace(/[^a-z0-9]/gi,'-');
       for(let i=0;i<wrappers.length;i++){
         const pageEl=wrappers[i].querySelector('page')||wrappers[i];
         const canvas=await html2canvas(pageEl,{
-          scale:3,useCORS:true,allowTaint:true,backgroundColor:'#ffffff',
-          width:trimDims.pw,height:trimDims.ph,windowWidth:trimDims.pw,windowHeight:trimDims.ph,logging:false,
-          onclone:clonedDoc=>{
+          scale,useCORS:true,allowTaint:true,backgroundColor:'#ffffff',
+          width:PX_W,height:PX_H,windowWidth:PX_W,windowHeight:PX_H,logging:false,
+          onclone:(clonedDoc)=>{
             [...document.querySelectorAll('link[rel=stylesheet],style')].forEach(s=>{
-              if(s.tagName.toLowerCase()==='link'){const c=clonedDoc.createElement('link');c.rel='stylesheet';c.href=s.href;clonedDoc.head.appendChild(c);}
+              const tag=s.tagName.toLowerCase();
+              if(tag==='link'){const c=clonedDoc.createElement('link');c.rel='stylesheet';c.href=s.href;clonedDoc.head.appendChild(c);}
               else{const c=clonedDoc.createElement('style');c.textContent=s.textContent;clonedDoc.head.appendChild(c);}
             });
           },
         });
-        canvas.toBlob(blob=>saveAs(blob,`${title}-pag${String(i+1).padStart(3,'0')}.jpg`),'image/jpeg',0.97);
+        canvas.toBlob(blob=>{
+          saveAs(blob,`${title}-pag${String(i+1).padStart(3,'0')}.jpg`);
+        },'image/jpeg',0.97);
         await new Promise(r=>setTimeout(r,40));
       }
     }finally{setLoading(false);}
   },[cfg]);
 
-  const handleDocx=async()=>{if(!blocks)return;try{setLoading(true);await exportDocx(blocks,cfg);}catch(e){setErr('Erro DOCX: '+e.message);}finally{setLoading(false);}};
+  const handleDocx=async()=>{
+    if(!blocks)return;
+    try{setLoading(true);await exportDocx(blocks,cfg);}
+    catch(e){setErr('Erro DOCX: '+e.message);}
+    finally{setLoading(false);}
+  };
 
   const reset=()=>{
     setBlocks(null);setHtml(null);setPidx(0);
     db.set('kdp-blocks',null);db.set('kdp-html',null);db.set('kdp-pidx',0);
   };
 
-  if(!blocks)return(
+  if(!blocks) return(
     <>
       <UploadScreen onFile={handleFile} loading={loading}/>
       {showApi&&<ApiModal onClose={()=>setShowApi(false)} apiKey={apiKey} setApiKey={setApiKey}/>}
@@ -901,15 +1214,19 @@ function App(){
     <div className="app">
       <Sidebar cfg={cfg} setCfg={setCfg} blocks={blocks} processedIdx={pidx}
         aiLoading={aiLoading} onDiagram={doDiagram} onResume={handleResume}
-        onApplyFix={handleFix} onPdf={()=>setShowPdf(true)} onDocx={handleDocx}
-        onExportJpgs={handleExportJpgs} onApiKey={()=>setShowApi(true)} onNewFile={reset} onReset={reset}/>
+        onApplyFix={handleFix} onPdf={handlePdf} onDocx={handleDocx}
+        onExportJpgs={handleExportJpgs}
+        onApiKey={()=>setShowApi(true)} onNewFile={reset}/>
       <Preview html={html} aiLoading={aiLoading} processedIdx={pidx} total={blocks.length}/>
+
       {aiLoading&&<div className="toast"><div className="spin"/>
         Diagramando... {blocks?Math.round((Math.max(pidx,1)/blocks.length)*100):0}%
       </div>}
+
       {showApi&&<ApiModal onClose={()=>setShowApi(false)} apiKey={apiKey} setApiKey={setApiKey}/>}
       {showPdf&&<PdfModal onClose={()=>{if(!pdfProgress)setShowPdf(false);}} onExport={exportPdfScreenshot} pdfProgress={pdfProgress}/>}
       {err&&<ErrModal msg={err} onClose={()=>setErr(null)}/>}
+
       {loading&&<div className="load-overlay">
         <div style={{textAlign:'center'}}>
           <div className="spin" style={{width:36,height:36,borderWidth:3,margin:'0 auto 12px'}}/>
