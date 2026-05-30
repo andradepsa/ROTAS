@@ -9,9 +9,14 @@
 <script src="https://unpkg.com/docx@8.2.2/build/index.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-<script type="module">
-  import{get,set}from'https://unpkg.com/idb-keyval@6/dist/index.js';
-  window._idbGet=get;window._idbSet=set;
+<script src="https://unpkg.com/idb-keyval@6/dist/umd.js"></script>
+<script>
+  // idb-keyval UMD expõe window.idbKeyval
+  (function(){
+    var lib = window.idbKeyval || {};
+    window._idbGet = lib.get || function(){return Promise.resolve(null);};
+    window._idbSet = lib.set || function(){return Promise.resolve();};
+  })();
 </script>
 <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -713,7 +718,7 @@ function Toggle({v,onChange}){
   return <button className={`tog ${v?'on':''}`} onClick={()=>onChange(!v)} type="button"/>;
 }
 
-function Sidebar({cfg,setCfg,blocks,processedIdx,aiLoading,onDiagram,onResume,onApplyFix,onPdf,onDocx,onExportJpgs,onApiKey,onNewFile}){
+function Sidebar({cfg,setCfg,blocks,processedIdx,html,aiLoading,onDiagram,onResume,onApplyFix,onPdf,onDocx,onExportJpgs,onApiKey,onNewFile}){
   const [prompt,setPrompt]=useState('');
   const canResume=!!blocks&&processedIdx<blocks.length;
   const isInit=processedIdx===0;
@@ -998,9 +1003,9 @@ function App(){
 
       if(startIdx===0){setHtml('');out='';setPidx(0);}
       else{
-        const m=(baseHtml||html||'').match(/<page[\s>]/gi);
+        const m=(baseHtml||'').match(/<page[\s>]/gi);
         pageNum=m?m.length+1:1;
-        out=baseHtml||html||'';
+        out=baseHtml||'';
       }
 
       // Chunk menor = menos contexto para a IA perder o fio
@@ -1057,9 +1062,12 @@ function App(){
     }finally{
       if(abrt.current===ctrl)setAiLoading(false);
     }
-  },[blocks,cfg,apiKey,html,needKey]);
+  },[blocks,cfg,apiKey,needKey]);
 
-  const handleResume=useCallback(()=>doDiagram('',pidx,html||''),[doDiagram,pidx,html]);
+  const handleResume=useCallback(()=>{
+    const cur=html||'';
+    doDiagram('',pidx,cur);
+  },[doDiagram,pidx,html]);
 
   const handleFix=useCallback(async userStyle=>{
     if(!html||!userStyle.trim()||!needKey())return;
@@ -1213,6 +1221,7 @@ function App(){
   return(
     <div className="app">
       <Sidebar cfg={cfg} setCfg={setCfg} blocks={blocks} processedIdx={pidx}
+        html={html}
         aiLoading={aiLoading} onDiagram={doDiagram} onResume={handleResume}
         onApplyFix={handleFix} onPdf={handlePdf} onDocx={handleDocx}
         onExportJpgs={handleExportJpgs}
